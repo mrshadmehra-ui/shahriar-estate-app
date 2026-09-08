@@ -5,14 +5,18 @@ import { action } from "./_generated/server";
 import { api } from "./_generated/api";
 
 /**
- * AI features backed by SambaNova Cloud (OpenAI-compatible chat completions).
- * The key lives server-side: set SAMBANOVA_API_KEY (and optionally AI_MODEL)
- * in the project's Keys / environment variables.
+ * AI features backed by Hugging Face Inference Providers
+ * (OpenAI-compatible router: https://router.huggingface.co/v1).
+ *
+ * The token is free to create (no credit card) and lives server-side:
+ * set HUGGINGFACE_TOKEN in the project's Keys / environment variables.
+ * Optionally override the model with AI_MODEL or the endpoint with AI_BASE_URL.
  */
 
-const API_KEY = process.env.SAMBANOVA_API_KEY;
-const MODEL = process.env.AI_MODEL ?? "Meta-Llama-3.3-70B-Instruct";
-const BASE_URL = "https://api.sambanova.ai/v1";
+const API_KEY = process.env.HUGGINGFACE_TOKEN ?? process.env.AI_API_KEY;
+const MODEL =
+  process.env.AI_MODEL ?? "Qwen/Qwen2.5-72B-Instruct";
+const BASE_URL = process.env.AI_BASE_URL ?? "https://router.huggingface.co/v1";
 
 const CATEGORIES = ["مسکونی", "اداری", "تجاری", "صنعتی"] as const;
 const TRANSACTIONS = ["فروش", "اجاره"] as const;
@@ -36,7 +40,7 @@ interface ChatMessage {
 async function chat(messages: ChatMessage[], temperature = 0.2): Promise<string> {
   if (!API_KEY) {
     throw new ConvexError(
-      "کلید هوش مصنوعی تنظیم نشده است. لطفا SAMBANOVA_API_KEY را در بخش Keys پروژه وارد کنید.",
+      "کلید هوش مصنوعی تنظیم نشده است. لطفا HUGGINGFACE_TOKEN را در بخش Keys پروژه وارد کنید (توکن رایگان: huggingface.co/settings/tokens).",
     );
   }
   const response = await fetch(`${BASE_URL}/chat/completions`, {
