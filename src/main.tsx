@@ -127,7 +127,10 @@ createRoot(document.getElementById("root")!).render(
               <Route
                 path="/dashboard"
                 element={
-                  <RequireAuth>
+                  <RequireAuth
+                    title="برای مدیریت فایل‌ها وارد شوید"
+                    description="این بخش مخصوص دفتر املاک شهریار است؛ پس از ورود به همین صفحه بازمی‌گردید."
+                  >
                     <Dashboard />
                   </RequireAuth>
                 }

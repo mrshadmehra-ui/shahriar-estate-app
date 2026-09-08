@@ -42,6 +42,30 @@ const schema = defineSchema(
       description: v.optional(v.string()), // free text details
     }),
 
+    // real estate listings shown on the landing page and managed from the dashboard
+    properties: defineTable({
+      title: v.string(),
+      location: v.string(),
+      area: v.string(), // district within Shahriar
+      category: v.union(
+        v.literal("مسکونی"),
+        v.literal("اداری"),
+        v.literal("تجاری"),
+        v.literal("صنعتی"),
+      ),
+      transaction: v.union(v.literal("فروش"), v.literal("اجاره")),
+      image: v.string(), // main photo URL
+      gallery: v.array(v.string()), // photo URLs for the detail view
+      specs: v.array(v.object({ icon: v.string(), label: v.string() })),
+      amenities: v.array(v.string()),
+      description: v.string(),
+      price: v.optional(v.string()), // display price, e.g. ۲,۸۵۰,۰۰۰,۰۰۰ تومان
+      pricePerMeter: v.optional(v.string()), // display per-meter price
+      priceValue: v.number(), // raw value (total for sale, monthly for rent) used by search filters
+    })
+      .index("by_category", ["category"])
+      .index("by_transaction", ["transaction"]),
+
     // tableName: defineTable({
     //   ...
     //   // table fields

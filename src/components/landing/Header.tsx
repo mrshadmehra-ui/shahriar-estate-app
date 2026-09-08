@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   Menu,
   Phone,
+  Settings,
   Star,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { label: "چرا املاک شهریار؟", href: "#why-us", icon: Star },
   { label: "درباره ما", href: "#about", icon: Info },
   { label: "تماس با ما", href: "#contact", icon: Phone },
+  { label: "پنل مدیریت", href: "/dashboard", icon: Settings },
 ];
 
 export function Header() {

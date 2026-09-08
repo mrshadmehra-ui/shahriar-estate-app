@@ -3,7 +3,7 @@ import { ChevronLeft, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Scene } from "./Scene";
 import { cn } from "@/lib/utils";
-import type { Property } from "@/lib/estate";
+import { specIcon, type Property } from "@/lib/estate";
 
 const badgeStyles = {
   فروش: "bg-emerald-500/95",
@@ -53,15 +53,18 @@ export function PropertyCard({ property, index, onDetails }: PropertyCardProps) 
         </div>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-white/70 pt-3">
-          {property.specs.slice(0, 3).map((spec) => (
-            <span
-              key={spec.label}
-              className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
-            >
-              <spec.icon className="size-3.5 text-primary/70" />
-              {spec.label}
-            </span>
-          ))}
+          {property.specs.slice(0, 3).map((spec) => {
+            const Icon = specIcon(spec.icon);
+            return (
+              <span
+                key={spec.label}
+                className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
+              >
+                <Icon className="size-3.5 text-primary/70" />
+                {spec.label}
+              </span>
+            );
+          })}
         </div>
 
         <div className="mt-auto flex items-end justify-between gap-2 border-t border-white/70 pt-3">
@@ -84,5 +87,20 @@ export function PropertyCard({ property, index, onDetails }: PropertyCardProps) 
         </Button>
       </div>
     </motion.article>
+  );
+}
+
+/** Placeholder shown while listings are loading. */
+export function PropertyCardSkeleton() {
+  return (
+    <div className="glass flex flex-col overflow-hidden rounded-3xl">
+      <div className="h-52 animate-pulse bg-sky-200/50 sm:h-56" />
+      <div className="space-y-3 p-5">
+        <div className="h-4 w-3/4 animate-pulse rounded-full bg-sky-200/60" />
+        <div className="h-3 w-1/2 animate-pulse rounded-full bg-sky-200/50" />
+        <div className="h-3 w-full animate-pulse rounded-full bg-sky-100" />
+        <div className="h-9 w-full animate-pulse rounded-xl bg-sky-100" />
+      </div>
+    </div>
   );
 }

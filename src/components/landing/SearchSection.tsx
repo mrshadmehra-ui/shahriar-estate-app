@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { RotateCcw, Search, SearchX, Sparkles } from "lucide-react";
+import { Building2, RotateCcw, Search, SearchX, Sparkles } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,8 +12,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PropertyCard } from "./PropertyCard";
-import { AREAS, properties, type Category, type Transaction } from "@/lib/estate";
+import { PropertyCard, PropertyCardSkeleton } from "./PropertyCard";
+import {
+  AREAS,
+  type Category,
+  type Property,
+  type Transaction,
+} from "@/lib/estate";
 import { cn } from "@/lib/utils";
 import { faNumber } from "@/lib/fa";
 
@@ -39,11 +46,13 @@ function scrollToId(id: string) {
 }
 
 interface SearchSectionProps {
-  onDetails: (property: (typeof properties)[number]) => void;
+  onDetails: (property: Property) => void;
 }
 
 export function SearchSection({ onDetails }: SearchSectionProps) {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const allProperties = useQuery(api.properties.list);
+  const properties = allProperties ?? [];
 
   const results = useMemo(() => {
     const min = (Number(filters.minPrice) || 0) * 1_000_000;
@@ -56,7 +65,7 @@ export function SearchSection({ onDetails }: SearchSectionProps) {
       if (p.priceValue > max) return false;
       return true;
     });
-  }, [filters]);
+  }, [filters, properties]);
 
   const hasActiveFilters = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS);
 
@@ -213,9 +222,11 @@ export function SearchSection({ onDetails }: SearchSectionProps) {
               <h2 className="text-2xl font-extrabold text-navy sm:text-3xl">
                 فایل‌های منتخب
               </h2>
-              <span className="glass-soft rounded-full px-3 py-1 text-xs font-bold text-primary">
-                {faNumber(results.length)} ملک یافت شد
-              </span>
+              {allProperties !== undefined && (
+                <span className="glass-soft rounded-full px-3 py-1 text-xs font-bold text-primary">
+                  {faNumber(results.length)} ملک یافت شد
+                </span>
+              )}
             </div>
             {hasActiveFilters && (
               <Button
@@ -229,16 +240,36 @@ export function SearchSection({ onDetails }: SearchSectionProps) {
             )}
           </div>
 
-          {results.length > 0 ? (
+          {allProperties === undefined ? (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <PropertyCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : results.length > 0 ? (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {results.map((property, index) => (
                 <PropertyCard
-                  key={property.id}
+                  key={property._id}
                   property={property}
                   index={index}
                   onDetails={onDetails}
                 />
               ))}
+            </div>
+          ) : properties.length === 0 ? (
+            <div className="glass flex flex-col items-center gap-4 rounded-[2rem] px-6 py-16 text-center">
+              <span className="glass-soft flex size-16 items-center justify-center rounded-2xl text-gold-deep">
+                <Building2 className="size-7" />
+              </span>
+              <div>
+                <p className="text-base font-extrabold text-navy">
+                  هنوز فایلی ثبت نشده است
+                </p>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  به‌زودی فایل‌های جدید منتشر می‌شود؛ برای اطلاع از آخرین فایل‌ها با ما تماس بگیرید.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="glass flex flex-col items-center gap-4 rounded-[2rem] px-6 py-16 text-center">

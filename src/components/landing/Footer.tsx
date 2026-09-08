@@ -30,6 +30,7 @@ const LINKS = [
   { label: "فایل‌های صنعتی", href: "#industrial" },
   { label: "درباره ما", href: "#about" },
   { label: "تماس با ما", href: "#contact" },
+  { label: "پنل مدیریت", href: "/dashboard" },
 ];
 
 const SERVICES = [

@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, Factory, MapPin, Phone } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Scene } from "./Scene";
 import { SectionHeader } from "./SectionHeader";
 import { cn } from "@/lib/utils";
 import { PHONE_TEL } from "@/lib/fa";
-import { properties, type Property } from "@/lib/estate";
-
-const industrial = properties.filter((p) => p.category === "صنعتی");
+import { specIcon, type Property } from "@/lib/estate";
 
 interface IndustrialProps {
   onDetails: (property: Property) => void;
@@ -16,6 +16,25 @@ interface IndustrialProps {
 
 export function Industrial({ onDetails }: IndustrialProps) {
   const [index, setIndex] = useState(0);
+  const allProperties = useQuery(api.properties.list);
+  const industrial = (allProperties ?? []).filter((p) => p.category === "صنعتی");
+
+  useEffect(() => {
+    if (index >= industrial.length) setIndex(0);
+  }, [industrial.length, index]);
+
+  if (allProperties === undefined) {
+    return (
+      <section className="relative py-14 lg:py-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="glass h-[420px] animate-pulse rounded-[2rem]" />
+        </div>
+      </section>
+    );
+  }
+
+  if (industrial.length === 0) return null;
+
   const item = industrial[index];
 
   return (
@@ -52,7 +71,7 @@ export function Industrial({ onDetails }: IndustrialProps) {
 
             {/* info */}
             <motion.div
-              key={item.id}
+              key={item._id}
               initial={{ opacity: 0, x: -18 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.45, ease: "easeOut" }}
@@ -69,15 +88,18 @@ export function Industrial({ onDetails }: IndustrialProps) {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {item.specs.map((spec) => (
-                  <span
-                    key={spec.label}
-                    className="glass-soft flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-navy"
-                  >
-                    <spec.icon className="size-4 text-gold-deep" />
-                    {spec.label}
-                  </span>
-                ))}
+                {item.specs.map((spec) => {
+                  const Icon = specIcon(spec.icon);
+                  return (
+                    <span
+                      key={spec.label}
+                      className="glass-soft flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-navy"
+                    >
+                      <Icon className="size-4 text-gold-deep" />
+                      {spec.label}
+                    </span>
+                  );
+                })}
               </div>
 
               <p className="text-sm leading-7 text-muted-foreground">
@@ -124,7 +146,7 @@ export function Industrial({ onDetails }: IndustrialProps) {
           <div className="relative flex items-center justify-center gap-2 border-t border-white/70 py-4">
             {industrial.map((p, i) => (
               <button
-                key={p.id}
+                key={p._id}
                 aria-label={`فایل ${i + 1}`}
                 onClick={() => setIndex(i)}
                 className={cn(

@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Scene } from "./Scene";
 import { cn } from "@/lib/utils";
 import { faNumber, PHONE_TEL } from "@/lib/fa";
-import type { Property } from "@/lib/estate";
+import { specIcon, type Property } from "@/lib/estate";
 
 const badgeStyles = {
   فروش: "bg-emerald-500/95",
@@ -102,15 +102,18 @@ export function PropertyDialog({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {property.specs.map((spec) => (
-              <span
-                key={spec.label}
-                className="glass-soft flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-navy"
-              >
-                <spec.icon className="size-4 text-gold-deep" />
-                {spec.label}
-              </span>
-            ))}
+            {property.specs.map((spec) => {
+              const Icon = specIcon(spec.icon);
+              return (
+                <span
+                  key={spec.label}
+                  className="glass-soft flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-navy"
+                >
+                  <Icon className="size-4 text-gold-deep" />
+                  {spec.label}
+                </span>
+              );
+            })}
           </div>
 
           <div>
