@@ -40,7 +40,7 @@ export default function Landing() {
         <SearchSection onDetails={handleDetails} />
         <Industrial onDetails={handleDetails} />
         <WhyUs />
-        <ContactSection />
+        <ContactSection onDetails={handleDetails} />
       </main>
       <Footer />
       <MobileNav />

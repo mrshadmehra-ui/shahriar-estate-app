@@ -40,6 +40,18 @@ const schema = defineSchema(
       phone: v.string(), // mobile number
       requestType: v.optional(v.string()), // e.g. buy / sell / rent
       description: v.optional(v.string()), // free text details
+      // structured needs used for AI matching against listings
+      transaction: v.optional(v.union(v.literal("فروش"), v.literal("اجاره"))),
+      category: v.optional(
+        v.union(
+          v.literal("مسکونی"),
+          v.literal("اداری"),
+          v.literal("تجاری"),
+          v.literal("صنعتی"),
+        ),
+      ),
+      area: v.optional(v.string()),
+      budgetValue: v.optional(v.number()), // maximum budget in Toman
     }),
 
     // real estate listings shown on the landing page and managed from the dashboard

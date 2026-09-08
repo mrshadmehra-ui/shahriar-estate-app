@@ -83,10 +83,17 @@ function splitList(value: string): string[] {
     .filter(Boolean);
 }
 
+/** Draft produced by the AI extractor (price may still be missing). */
+export type AiDraft = Omit<PropertyInput, "priceValue"> & {
+  priceValue: number | null;
+};
+
 interface PropertyFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   property: Property | null;
+  /** Pre-filled data for a new listing (e.g. extracted by AI). */
+  draft?: AiDraft | null;
   pending: boolean;
   onSave: (data: PropertyInput) => void;
 }
@@ -95,6 +102,7 @@ export function PropertyFormDialog({
   open,
   onOpenChange,
   property,
+  draft,
   pending,
   onSave,
 }: PropertyFormDialogProps) {
@@ -121,11 +129,29 @@ export function PropertyFormDialog({
         pricePerMeter: property.pricePerMeter ?? "",
         priceValue: property.priceValue ? String(property.priceValue) : "",
       });
+    } else if (draft) {
+      setForm({
+        title: draft.title,
+        location: draft.location,
+        area: draft.area,
+        category: draft.category,
+        transaction: draft.transaction,
+        image: draft.image,
+        galleryText: draft.gallery.join("\n"),
+        specs: draft.specs.length
+          ? draft.specs.map((s) => ({ icon: s.icon, label: s.label }))
+          : [{ icon: "ruler", label: "" }],
+        amenitiesText: draft.amenities.join("، "),
+        description: draft.description,
+        price: draft.price ?? "",
+        pricePerMeter: draft.pricePerMeter ?? "",
+        priceValue: draft.priceValue ? String(draft.priceValue) : "",
+      });
     } else {
       setForm(EMPTY_FORM);
     }
     setError(null);
-  }, [open, property]);
+  }, [open, property, draft]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
