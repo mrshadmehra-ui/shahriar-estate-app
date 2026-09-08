@@ -1,51 +1,71 @@
-// TODO: REPLACE THIS LANDING PAGE WITH AN ELEGANT, THEMATIC, AND WELL-DESIGNED LANDING PAGE RELEVANT TO THE PROJECT
+import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader } from "lucide-react";
-import logo from "@/assets/logo.svg";
+import { Header } from "@/components/landing/Header";
+import { Hero } from "@/components/landing/Hero";
+import { Services } from "@/components/landing/Services";
+import { SearchSection } from "@/components/landing/SearchSection";
+import { Industrial } from "@/components/landing/Industrial";
+import { WhyUs } from "@/components/landing/WhyUs";
+import { ContactSection } from "@/components/landing/ContactSection";
+import { Footer } from "@/components/landing/Footer";
+import { MobileNav } from "@/components/landing/MobileNav";
+import { PropertyDialog } from "@/components/landing/PropertyDialog";
+import type { Property } from "@/lib/estate";
+
+function Background() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+    >
+      <div className="absolute inset-0 bg-gradient-to-b from-sky-100/90 via-[#f4f8fd] to-white" />
+      <div className="absolute -top-32 right-[8%] size-[420px] rounded-full bg-sky-200/50 blur-3xl" />
+      <div className="absolute top-[28%] left-[-6%] size-[380px] rounded-full bg-indigo-200/40 blur-3xl" />
+      <div className="absolute top-[60%] right-[-8%] size-[420px] rounded-full bg-amber-100/60 blur-3xl" />
+      <div className="absolute bottom-[-10%] left-[20%] size-[360px] rounded-full bg-sky-200/40 blur-3xl" />
+    </div>
+  );
+}
 
 export default function Landing() {
+  const [selected, setSelected] = useState<Property | null>(null);
+
+  const handleDetails = useCallback((property: Property) => {
+    setSelected(property);
+  }, []);
+
+  const handleConsult = useCallback(() => {
+    setSelected(null);
+    document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="min-h-screen flex flex-col"
+      className="relative min-h-screen overflow-x-clip"
     >
+      <Background />
+      <Header />
+      <main>
+        <Hero />
+        <Services />
+        <SearchSection onDetails={handleDetails} />
+        <Industrial onDetails={handleDetails} />
+        <WhyUs />
+        <ContactSection />
+      </main>
+      <Footer />
+      <MobileNav />
 
-      
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <div className="max-w-5xl mx-auto relative px-4">
-        {/* TODO: landing page goes here; replace with the landing page */}
-        <div className="flex justify-center">
-          <img
-            src={logo}
-            alt="Lock Icon"
-            width={64}
-            height={64}
-            className="rounded-lg mb-8 mt-24"
-          />
-        </div>
-        <div className="flex items-center justify-center text-foreground">
-          <Loader className="h-8 w-8 animate-spin mr-4 shrink-0" />
-          <span className="text-base">
-            <a
-              href="https://freebuff.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline hover:text-primary/80 transition-colors font-medium"
-            >
-              freebuff.com
-            </a>
-            {" "}is generating your project...
-          </span>
-        </div>
-        <p className="text-center text-muted-foreground py-6 text-sm mt-2">
-          Check progress on your project page.
-        </p>
-        
-        </div>
-      </div>
+      <PropertyDialog
+        property={selected}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+        onConsult={handleConsult}
+      />
     </motion.div>
   );
 }

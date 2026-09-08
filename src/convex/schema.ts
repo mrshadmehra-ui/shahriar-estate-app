@@ -34,6 +34,14 @@ const schema = defineSchema(
 
     // add other tables here
 
+    // consultation requests submitted through the landing page form
+    consultations: defineTable({
+      name: v.string(), // full name of the requester
+      phone: v.string(), // mobile number
+      requestType: v.optional(v.string()), // e.g. buy / sell / rent
+      description: v.optional(v.string()), // free text details
+    }),
+
     // tableName: defineTable({
     //   ...
     //   // table fields
