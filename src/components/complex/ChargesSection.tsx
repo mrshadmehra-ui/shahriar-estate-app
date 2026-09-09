@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { CalendarCog, FileWarning, Plus, Sparkles, XCircle } from "lucide-react";
+import { CalendarCog, FileWarning, Pencil, Plus, Sparkles, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,6 +35,7 @@ export function ChargesSection() {
   const units = useQuery(api.accounting.charges.listUnitsForCharges);
   const coa = useQuery(api.accounting.accounts.listChartOfAccounts);
   const createRule = useMutation(api.accounting.charges.createChargeRule);
+  const updateRule = useMutation(api.accounting.charges.updateChargeRule);
   const createCharge = useMutation(api.accounting.charges.createCharge);
   const generate = useMutation(api.accounting.charges.generateMonthlyCharges);
   const voidCharge = useMutation(api.accounting.charges.voidCharge);
@@ -45,6 +46,16 @@ export function ChargesSection() {
   const [voiding, setVoiding] = useState<Id<"charges"> | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // edit rule
+  const [editingRule, setEditingRule] = useState<Doc<"chargeRules"> | null>(null);
+  const [erName, setErName] = useState("");
+  const [erCategory, setErCategory] = useState("3-01");
+  const [erBase, setErBase] = useState(0);
+  const [erRate, setErRate] = useState(0);
+  const [erParking, setErParking] = useState(0);
+  const [erDesc, setErDesc] = useState("");
+  const [erActive, setErActive] = useState("true");
 
   // rule form
   const [ruleName, setRuleName] = useState("");
@@ -115,6 +126,43 @@ export function ChargesSection() {
       resetRuleForm();
     } catch (e) {
       toast.error((e as Error).message ?? "ثبت قانون ناموفق بود");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEditRule = (r: Doc<"chargeRules">) => {
+    setEditingRule(r);
+    setErName(r.name);
+    setErCategory(r.categoryCode);
+    setErBase(r.baseRial);
+    setErRate(r.ratePerM2Rial);
+    setErParking(r.parkingRateRial);
+    setErDesc(r.description ?? "");
+    setErActive(r.isActive ? "true" : "false");
+  };
+
+  const submitEditRule = async () => {
+    if (!editingRule || !erName.trim()) {
+      toast.error("نام قانون را وارد کنید");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateRule({
+        ruleId: editingRule._id,
+        name: erName.trim(),
+        categoryCode: erCategory,
+        baseRial: erBase,
+        ratePerM2Rial: erRate,
+        parkingRateRial: erParking,
+        description: erDesc.trim() || undefined,
+        isActive: erActive === "true",
+      });
+      toast.success("قانون شارژ به‌روزرسانی شد");
+      setEditingRule(null);
+    } catch (e) {
+      toast.error((e as Error).message ?? "به‌روزرسانی ناموفق بود");
     } finally {
       setSaving(false);
     }
@@ -237,7 +285,18 @@ export function ChargesSection() {
                   {r.description ? ` — ${r.description}` : ""}
                 </p>
               </div>
-              <Badge tone="bg-sky-100 text-sky-700">{r.categoryCode}</Badge>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Badge tone="bg-sky-100 text-sky-700">{r.categoryCode}</Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="ویرایش قانون"
+                  className="size-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                  onClick={() => openEditRule(r)}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>
@@ -376,6 +435,67 @@ export function ChargesSection() {
             <Button variant="outline" onClick={() => setRuleOpen(false)}>انصراف</Button>
             <Button onClick={submitRule} disabled={saving}>
               {saving ? "در حال ثبت…" : "ثبت قانون"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* edit rule dialog */}
+      <Dialog open={editingRule !== null} onOpenChange={(o) => !o && setEditingRule(null)}>
+        <DialogContent className="glass max-w-lg border-white/60">
+          <DialogHeader>
+            <DialogTitle className="text-navy">ویرایش قانون شارژ</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              تغییرات فقط روی شارژهای آینده اثر می‌گذارد؛ شارژهای قبلی دست‌نخورده می‌مانند.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs font-bold">نام قانون</Label>
+              <Input dir="rtl" value={erName} onChange={(e) => setErName(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">سرفصل درآمد</Label>
+              <Select value={erCategory} onValueChange={setErCategory}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {incomeAccounts.map((a) => (
+                    <SelectItem key={a.code} value={a.code}>{a.code} — {a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">وضعیت</Label>
+              <Select value={erActive} onValueChange={setErActive}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">فعال</SelectItem>
+                  <SelectItem value="false">غیرفعال</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">مبلغ ثابت</Label>
+              <MoneyInput compact valueRial={erBase} onChange={setErBase} unit={unit} onUnitChange={setUnit} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">نرخ هر متر مربع</Label>
+              <MoneyInput compact valueRial={erRate} onChange={setErRate} unit={unit} onUnitChange={setUnit} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">نرخ هر پارکینگ</Label>
+              <MoneyInput compact valueRial={erParking} onChange={setErParking} unit={unit} onUnitChange={setUnit} />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs font-bold">توضیحات</Label>
+              <Textarea dir="rtl" value={erDesc} onChange={(e) => setErDesc(e.target.value)} className="min-h-16 text-xs" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingRule(null)}>انصراف</Button>
+            <Button onClick={submitEditRule} disabled={saving}>
+              {saving ? "در حال ذخیره…" : "ذخیره تغییرات"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,23 +1,72 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { BookOpenCheck, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
+import { BookOpenCheck, ListTree, Pencil, Plus, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatJalali } from "@/lib/jalali";
 import { formatMoney } from "@/lib/money";
 import { toFa } from "@/lib/fa";
+import { cn } from "@/lib/utils";
 import { useMoneyPref } from "./money-context";
 import { Badge, EmptyState, LoadingRow, Panel, SectionHeader } from "./ui";
 import { JOURNAL_SOURCE_LABELS } from "./labels";
+
+const COA_TYPES = [
+  { value: "asset", label: "دارایی‌ها" },
+  { value: "liability", label: "بدهی‌ها" },
+  { value: "income", label: "درآمدها" },
+  { value: "expense", label: "هزینه‌ها" },
+  { value: "equity", label: "سرمایه / مانده افتتاحیه" },
+] as const;
+
+const TYPE_TONE: Record<string, string> = {
+  asset: "bg-emerald-100 text-emerald-700",
+  liability: "bg-rose-100 text-rose-700",
+  income: "bg-sky-100 text-sky-700",
+  expense: "bg-amber-100 text-amber-700",
+  equity: "bg-violet-100 text-violet-700",
+};
+
+type CoaDoc = Doc<"chartOfAccounts">;
 
 export function LedgerSection() {
   const { unit } = useMoneyPref();
   const ledger = useQuery(api.accounting.reports.ledger, { limit: 60 });
   const integrity = useQuery(api.accounting.reports.runIntegrityCheck);
+  const coa = useQuery(api.accounting.accounts.listChartOfAccounts);
   const rebuild = useMutation(api.accounting.reports.rebuildBalances);
+  const createAccount = useMutation(api.accounting.accounts.createAccount);
+  const updateAccount = useMutation(api.accounting.accounts.updateAccount);
   const [rebuilding, setRebuilding] = useState(false);
+
+  // new COA form
+  const [coaOpen, setCoaOpen] = useState(false);
+  const [coaCode, setCoaCode] = useState("");
+  const [coaName, setCoaName] = useState("");
+  const [coaType, setCoaType] = useState<string>("income");
+  const [coaParent, setCoaParent] = useState("");
+
+  // edit COA form
+  const [editing, setEditing] = useState<CoaDoc | null>(null);
+  const [eName, setEName] = useState("");
+  const [eParent, setEParent] = useState("");
+  const [eActive, setEActive] = useState("true");
+
+  const [saving, setSaving] = useState(false);
 
   const doRebuild = async () => {
     setRebuilding(true);
@@ -33,11 +82,73 @@ export function LedgerSection() {
     }
   };
 
+  const resetCoaForm = () => {
+    setCoaCode("");
+    setCoaName("");
+    setCoaType("income");
+    setCoaParent("");
+  };
+
+  const submitCreateAccount = async () => {
+    if (!coaCode.trim() || !coaName.trim()) {
+      toast.error("کد و نام سرفصل را وارد کنید");
+      return;
+    }
+    setSaving(true);
+    try {
+      await createAccount({
+        code: coaCode.trim(),
+        name: coaName.trim(),
+        type: coaType as "asset" | "liability" | "income" | "expense" | "equity",
+        parentCode: coaParent.trim() || undefined,
+      });
+      toast.success("سرفصل جدید ثبت شد");
+      setCoaOpen(false);
+      resetCoaForm();
+    } catch (e) {
+      toast.error((e as Error).message ?? "ثبت سرفصل ناموفق بود");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = (a: CoaDoc) => {
+    setEditing(a);
+    setEName(a.name);
+    setEParent(a.parentCode ?? "");
+    setEActive(a.isActive ? "true" : "false");
+  };
+
+  const submitEdit = async () => {
+    if (!editing || !eName.trim()) {
+      toast.error("نام سرفصل را وارد کنید");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateAccount({
+        accountId: editing._id,
+        name: eName.trim(),
+        parentCode: eParent.trim() || undefined,
+        isActive: eActive === "true",
+      });
+      toast.success("سرفصل به‌روزرسانی شد");
+      setEditing(null);
+    } catch (e) {
+      toast.error((e as Error).message ?? "به‌روزرسانی ناموفق بود");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const coaByType = (type: string) =>
+    (coa ?? []).filter((a) => a.type === type).sort((a, b) => a.code.localeCompare(b.code));
+
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="دفتر کل"
-        description="همه اسناد حسابداری با سند معکوس‌ها — منبع حقیقت سیستم، نه مانده‌های کش‌شده."
+        title="دفتر کل و سرفصل‌های حسابداری"
+        description="سرفصل‌ها، همه اسناد حسابداری و بررسی سلامت — منبع حقیقت سیستم دفتر کل است."
         action={
           <Button variant="outline" size="sm" onClick={doRebuild} disabled={rebuilding}>
             <RefreshCw className={`size-4 ${rebuilding ? "animate-spin" : ""}`} />
@@ -45,6 +156,64 @@ export function LedgerSection() {
           </Button>
         }
       />
+
+      {/* chart of accounts */}
+      <Panel>
+        <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
+          <h3 className="flex items-center gap-2 text-sm font-extrabold text-foreground">
+            <ListTree className="size-4 text-primary" />
+            سرفصل‌های حسابداری
+          </h3>
+          <Button size="sm" className="h-8 gap-1.5 text-xs font-bold" onClick={() => setCoaOpen(true)}>
+            <Plus className="size-3.5" />
+            سرفصل جدید
+          </Button>
+        </div>
+        {coa === undefined ? (
+          <LoadingRow />
+        ) : (
+          <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {COA_TYPES.map((t) => {
+              const list = coaByType(t.value);
+              if (list.length === 0) return null;
+              return (
+                <div key={t.value} className="rounded-xl border border-border/60">
+                  <div className="flex items-center justify-between rounded-t-xl bg-muted/40 px-3 py-2">
+                    <p className="text-[11px] font-extrabold text-foreground">{t.label}</p>
+                    <Badge tone={TYPE_TONE[t.value]}>{toFa(list.length)} سرفصل</Badge>
+                  </div>
+                  <div className="divide-y divide-border/50">
+                    {list.map((a) => (
+                      <div key={a._id} className="flex items-center justify-between gap-2 px-3 py-2">
+                        <div className="min-w-0 leading-tight">
+                          <p className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                            <span dir="ltr" className="tabular-nums">{a.code}</span>
+                            <span className="truncate">{a.name}</span>
+                            {a.isSystem && <Badge tone="bg-muted text-muted-foreground">سیستمی</Badge>}
+                            {!a.isActive && <Badge tone="bg-slate-100 text-slate-500">غیرفعال</Badge>}
+                          </p>
+                          {a.parentCode && (
+                            <p className="text-[10px] text-muted-foreground" dir="ltr">زیرمجموعه {a.parentCode}</p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="ویرایش سرفصل"
+                          className="size-7 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                          onClick={() => openEdit(a)}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
 
       {/* integrity check */}
       <div className="rounded-2xl border border-border/70 bg-card">
@@ -154,6 +323,99 @@ export function LedgerSection() {
           </div>
         )}
       </Panel>
+
+      {/* new COA dialog */}
+      <Dialog open={coaOpen} onOpenChange={setCoaOpen}>
+        <DialogContent className="glass max-w-md border-white/60">
+          <DialogHeader>
+            <DialogTitle className="text-navy">سرفصل حسابداری جدید</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              سرفصل‌های درآمد (3-xx) و هزینه (4-xx) در فرم‌های شارژ و هزینه در دسترس قرار می‌گیرند.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">کد سرفصل</Label>
+                <Input dir="ltr" className="text-end" value={coaCode} onChange={(e) => setCoaCode(e.target.value)} placeholder="مثلاً: 3-05" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">گروه</Label>
+                <Select value={coaType} onValueChange={setCoaType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {COA_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">نام سرفصل</Label>
+              <Input dir="rtl" value={coaName} onChange={(e) => setCoaName(e.target.value)} placeholder="مثلاً: درآمد اجاره مشاعات" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">کد سرفصل والد (اختیاری)</Label>
+              <Input dir="ltr" className="text-end" value={coaParent} onChange={(e) => setCoaParent(e.target.value)} placeholder="مثلاً: 3" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCoaOpen(false)}>انصراف</Button>
+            <Button onClick={submitCreateAccount} disabled={saving}>
+              {saving ? "در حال ثبت…" : "ثبت سرفصل"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* edit COA dialog */}
+      <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="glass max-w-md border-white/60">
+          <DialogHeader>
+            <DialogTitle className="text-navy">ویرایش سرفصل</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {editing?.isSystem
+                ? "این سرفصل سیستمی است و فقط می‌توانید وضعیت آن را تغییر دهید."
+                : "کد سرفصل قابل تغییر نیست چون در اسناد دفتر کل استفاده شده است."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl bg-muted/40 px-3 py-2">
+              <p className="text-xs font-bold text-foreground" dir="ltr">
+                {editing?.code}
+                <span className="ms-2 text-muted-foreground">— {COA_TYPES.find((t) => t.value === editing?.type)?.label}</span>
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">نام سرفصل</Label>
+              <Input dir="rtl" value={eName} onChange={(e) => setEName(e.target.value)} disabled={editing?.isSystem} />
+            </div>
+            {!editing?.isSystem && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">کد سرفصل والد (اختیاری)</Label>
+                <Input dir="ltr" className="text-end" value={eParent} onChange={(e) => setEParent(e.target.value)} />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">وضعیت</Label>
+              <Select value={eActive} onValueChange={setEActive}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">فعال</SelectItem>
+                  <SelectItem value="false">غیرفعال</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>انصراف</Button>
+            <Button onClick={submitEdit} disabled={saving || editing?.isSystem}>
+              {saving ? "در حال ذخیره…" : "ذخیره تغییرات"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

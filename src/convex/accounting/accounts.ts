@@ -265,3 +265,125 @@ export const createFund = mutation({
     return id;
   },
 });
+
+/* ---------- editing master data (تغییر/ویرایش) ---------- */
+
+/** Edit a user-created COA heading (code is the ledger identity — never changes). */
+export const updateAccount = mutation({
+  args: {
+    accountId: v.id("chartOfAccounts"),
+    name: v.optional(v.string()),
+    parentCode: v.optional(v.string()),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireRole(ctx, [ROLES.SUPER_ADMIN]);
+    const account = await ctx.db.get(args.accountId);
+    if (!account) throw financialError("NOT_FOUND", "سرفصل یافت نشد.");
+    if (account.isSystem) {
+      throw financialError("SYSTEM_ACCOUNT", "سرفصل سیستمی قابل ویرایش نیست — فقط سرفصل‌های ایجادشده توسط کاربر قابل تغییر هستند.");
+    }
+    const patch: Record<string, unknown> = {};
+    if (args.name !== undefined) patch.name = args.name.trim();
+    if (args.parentCode !== undefined) patch.parentCode = args.parentCode.trim() || undefined;
+    if (args.isActive !== undefined) patch.isActive = args.isActive;
+    await ctx.db.patch(account._id, patch);
+    await recordAudit(ctx, {
+      userId,
+      action: ACTIONS.UPDATE,
+      entity: "chartOfAccounts",
+      entityId: account._id,
+      before: { code: account.code, name: account.name },
+      after: patch,
+    });
+  },
+});
+
+export const updateCashAccount = mutation({
+  args: {
+    cashAccountId: v.id("cashAccounts"),
+    name: v.optional(v.string()),
+    fundId: v.optional(v.id("funds")),
+    description: v.optional(v.string()),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAccounting(ctx);
+    const cash = await ctx.db.get(args.cashAccountId);
+    if (!cash) throw financialError("NOT_FOUND", "صندوق یافت نشد.");
+    const patch: Record<string, unknown> = {};
+    if (args.name !== undefined) patch.name = args.name.trim();
+    if (args.fundId !== undefined) patch.fundId = args.fundId;
+    if (args.description !== undefined) patch.description = args.description || undefined;
+    if (args.isActive !== undefined) patch.isActive = args.isActive;
+    await ctx.db.patch(cash._id, patch);
+    await recordAudit(ctx, {
+      userId,
+      action: ACTIONS.UPDATE,
+      entity: "cashAccounts",
+      entityId: cash._id,
+      before: { name: cash.name },
+      after: patch,
+    });
+  },
+});
+
+export const updateBankAccount = mutation({
+  args: {
+    bankAccountId: v.id("bankAccounts"),
+    bankName: v.optional(v.string()),
+    accountNumber: v.optional(v.string()),
+    iban: v.optional(v.string()),
+    cardNumber: v.optional(v.string()),
+    ownerName: v.optional(v.string()),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAccounting(ctx);
+    const bank = await ctx.db.get(args.bankAccountId);
+    if (!bank) throw financialError("NOT_FOUND", "حساب بانکی یافت نشد.");
+    const patch: Record<string, unknown> = {};
+    if (args.bankName !== undefined) patch.bankName = args.bankName.trim();
+    if (args.accountNumber !== undefined) patch.accountNumber = args.accountNumber.trim();
+    if (args.iban !== undefined) patch.iban = args.iban.trim() || undefined;
+    if (args.cardNumber !== undefined) patch.cardNumber = args.cardNumber.trim() || undefined;
+    if (args.ownerName !== undefined) patch.ownerName = args.ownerName.trim() || undefined;
+    if (args.isActive !== undefined) patch.isActive = args.isActive;
+    await ctx.db.patch(bank._id, patch);
+    await recordAudit(ctx, {
+      userId,
+      action: ACTIONS.UPDATE,
+      entity: "bankAccounts",
+      entityId: bank._id,
+      before: { bankName: bank.bankName, accountNumber: bank.accountNumber },
+      after: patch,
+    });
+  },
+});
+
+export const updateFund = mutation({
+  args: {
+    fundId: v.id("funds"),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAccounting(ctx);
+    const fund = await ctx.db.get(args.fundId);
+    if (!fund) throw financialError("NOT_FOUND", "صندوق تخصصی یافت نشد.");
+    const patch: Record<string, unknown> = {};
+    if (args.name !== undefined) patch.name = args.name.trim();
+    if (args.description !== undefined) patch.description = args.description || undefined;
+    if (args.isActive !== undefined) patch.isActive = args.isActive;
+    await ctx.db.patch(fund._id, patch);
+    await recordAudit(ctx, {
+      userId,
+      action: ACTIONS.UPDATE,
+      entity: "funds",
+      entityId: fund._id,
+      before: { name: fund.name },
+      after: patch,
+    });
+  },
+});

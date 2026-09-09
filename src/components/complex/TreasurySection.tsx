@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeftRight, Banknote, Landmark, PiggyBank, Plus } from "lucide-react";
+import { ArrowLeftRight, Banknote, Landmark, Pencil, PiggyBank, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,6 +25,8 @@ import { EmptyState, LoadingRow, Panel, SectionHeader } from "./ui";
 
 type TreasuryKind = "CASH" | "BANK" | "FUND";
 
+type EditState = { kind: TreasuryKind; id: Id<"cashAccounts"> | Id<"bankAccounts"> | Id<"funds"> } | null;
+
 export function TreasurySection() {
   const { unit, setUnit } = useMoneyPref();
   const treasury = useQuery(api.accounting.accounts.listTreasury);
@@ -32,6 +34,9 @@ export function TreasurySection() {
   const createCash = useMutation(api.accounting.accounts.createCashAccount);
   const createBank = useMutation(api.accounting.accounts.createBankAccount);
   const createFund = useMutation(api.accounting.accounts.createFund);
+  const updateCash = useMutation(api.accounting.accounts.updateCashAccount);
+  const updateBank = useMutation(api.accounting.accounts.updateBankAccount);
+  const updateFund = useMutation(api.accounting.accounts.updateFund);
   const createTransfer = useMutation(api.accounting.transfers.createTransfer);
 
   const [open, setOpen] = useState<"CASH" | "BANK" | "FUND" | null>(null);
@@ -47,6 +52,16 @@ export function TreasurySection() {
   const [ownerName, setOwnerName] = useState("");
   const [desc, setDesc] = useState("");
 
+  // edit form
+  const [editing, setEditing] = useState<EditState>(null);
+  const [eName, setEName] = useState("");
+  const [eBankNumber, setEBankNumber] = useState("");
+  const [eIban, setEIban] = useState("");
+  const [eCard, setECard] = useState("");
+  const [eOwnerName, setEOwnerName] = useState("");
+  const [eDesc, setEDesc] = useState("");
+  const [eActive, setEActive] = useState("true");
+
   // transfer form
   const [fromType, setFromType] = useState<TreasuryKind>("CASH");
   const [fromId, setFromId] = useState("");
@@ -58,6 +73,10 @@ export function TreasurySection() {
   const cash = treasury?.cash ?? [];
   const banks = treasury?.banks ?? [];
   const funds = treasury?.funds ?? [];
+
+  const editingCash = editing?.kind === "CASH" ? cash.find((c) => c._id === editing.id) : undefined;
+  const editingBank = editing?.kind === "BANK" ? banks.find((b) => b._id === editing.id) : undefined;
+  const editingFund = editing?.kind === "FUND" ? funds.find((f) => f._id === editing.id) : undefined;
 
   const accountsOf = (kind: TreasuryKind) =>
     kind === "CASH" ? cash : kind === "BANK" ? banks : funds;
@@ -106,6 +125,78 @@ export function TreasurySection() {
       resetCreate();
     } catch (e) {
       toast.error((e as Error).message ?? "ثبت ناموفق بود");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = (kind: TreasuryKind, id: string) => {
+    setEditing({ kind, id: id as Id<"cashAccounts"> | Id<"bankAccounts"> | Id<"funds"> });
+    if (kind === "CASH") {
+      const item = cash.find((c) => c._id === id);
+      if (item) {
+        setEName(item.name);
+        setEDesc(item.description ?? "");
+        setEActive(item.isActive ? "true" : "false");
+      }
+    } else if (kind === "BANK") {
+      const item = banks.find((b) => b._id === id);
+      if (item) {
+        setEName(item.bankName);
+        setEBankNumber(item.accountNumber);
+        setEIban(item.iban ?? "");
+        setECard(item.cardNumber ?? "");
+        setEOwnerName(item.ownerName ?? "");
+        setEActive(item.isActive ? "true" : "false");
+      }
+    } else {
+      const item = funds.find((f) => f._id === id);
+      if (item) {
+        setEName(item.name);
+        setEDesc(item.description ?? "");
+        setEActive(item.isActive ? "true" : "false");
+      }
+    }
+  };
+
+  const submitEdit = async () => {
+    if (!editing || !eName.trim()) {
+      toast.error("نام را وارد کنید");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (editing.kind === "CASH") {
+        await updateCash({
+          cashAccountId: editing.id as Id<"cashAccounts">,
+          name: eName.trim(),
+          description: eDesc.trim() || undefined,
+          isActive: eActive === "true",
+        });
+        toast.success("صندوق به‌روزرسانی شد");
+      } else if (editing.kind === "BANK") {
+        await updateBank({
+          bankAccountId: editing.id as Id<"bankAccounts">,
+          bankName: eName.trim(),
+          accountNumber: eBankNumber.trim(),
+          iban: eIban.trim() || undefined,
+          cardNumber: eCard.trim() || undefined,
+          ownerName: eOwnerName.trim() || undefined,
+          isActive: eActive === "true",
+        });
+        toast.success("حساب بانکی به‌روزرسانی شد");
+      } else {
+        await updateFund({
+          fundId: editing.id as Id<"funds">,
+          name: eName.trim(),
+          description: eDesc.trim() || undefined,
+          isActive: eActive === "true",
+        });
+        toast.success("صندوق تخصصی به‌روزرسانی شد");
+      }
+      setEditing(null);
+    } catch (e) {
+      toast.error((e as Error).message ?? "به‌روزرسانی ناموفق بود");
     } finally {
       setSaving(false);
     }
@@ -223,7 +314,18 @@ export function TreasurySection() {
                       <p className="truncate text-sm font-bold text-foreground">{c.name}</p>
                       <p className="truncate text-[11px] text-muted-foreground">{c.description ?? "—"}</p>
                     </div>
-                    <span className="text-sm font-extrabold tabular-nums">{formatMoney(c.balanceRial, unit)}</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-sm font-extrabold tabular-nums">{formatMoney(c.balanceRial, unit)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="ویرایش صندوق"
+                        className="size-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={() => openEdit("CASH", c._id)}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
                 <button
@@ -243,6 +345,10 @@ export function TreasurySection() {
                   <Landmark className="size-4 text-sky-600" />
                   بانک‌ها
                 </h3>
+                <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[11px] font-bold text-primary hover:bg-primary/10" onClick={() => setOpen("BANK")}>
+                  <Plus className="size-3.5" />
+                  بانک جدید
+                </Button>
               </div>
               <div className="divide-y divide-border/60">
                 {banks.length === 0 && <p className="px-4 py-6 text-center text-xs text-muted-foreground">حساب بانکی ثبت نشده است.</p>}
@@ -254,16 +360,20 @@ export function TreasurySection() {
                         شماره حساب: {b.accountNumber.slice(0, 4)}•••{b.accountNumber.slice(-4)}
                       </p>
                     </div>
-                    <span className="text-sm font-extrabold tabular-nums">{formatMoney(b.balanceRial, unit)}</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-sm font-extrabold tabular-nums">{formatMoney(b.balanceRial, unit)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="تغییر بانک"
+                        className="size-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={() => openEdit("BANK", b._id)}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
-                <button
-                  className="flex w-full items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold text-primary hover:bg-muted/40"
-                  onClick={() => setOpen("BANK")}
-                >
-                  <Plus className="size-3.5" />
-                  حساب بانکی جدید
-                </button>
               </div>
             </Panel>
 
@@ -283,7 +393,18 @@ export function TreasurySection() {
                       <p className="truncate text-sm font-bold text-foreground">{f.name}</p>
                       <p className="truncate text-[11px] text-muted-foreground">{f.description ?? "—"}</p>
                     </div>
-                    <span className="text-sm font-extrabold tabular-nums">{formatMoney(f.balanceRial, unit)}</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-sm font-extrabold tabular-nums">{formatMoney(f.balanceRial, unit)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="ویرایش صندوق تخصصی"
+                        className="size-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={() => openEdit("FUND", f._id)}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
                 <button
@@ -398,6 +519,72 @@ export function TreasurySection() {
             <Button variant="outline" onClick={() => setOpen(null)}>انصراف</Button>
             <Button onClick={submitCreate} disabled={saving}>
               {saving ? "در حال ثبت…" : "ثبت"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* edit dialog */}
+      <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="glass max-w-md border-white/60">
+          <DialogHeader>
+            <DialogTitle className="text-navy">
+              {editing?.kind === "CASH" ? "ویرایش صندوق" : editing?.kind === "BANK" ? "تغییر بانک / ویرایش حساب بانکی" : "ویرایش صندوق تخصصی"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {editing?.kind === "BANK"
+                ? "موجودی حساب فقط از طریق اسناد دفتر کل تغییر می‌کند."
+                : "مانده فقط از طریق اسناد دفتر کل تغییر می‌کند."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">{editing?.kind === "BANK" ? "نام بانک" : "نام"}</Label>
+              <Input dir="rtl" value={eName} onChange={(e) => setEName(e.target.value)} />
+            </div>
+            {editing?.kind === "BANK" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">شماره حساب</Label>
+                  <Input dir="ltr" className="text-end" value={eBankNumber} onChange={(e) => setEBankNumber(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">شبا</Label>
+                    <Input dir="ltr" className="text-end text-xs" value={eIban} onChange={(e) => setEIban(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">شماره کارت</Label>
+                    <Input dir="ltr" className="text-end text-xs" value={eCard} onChange={(e) => setECard(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">به نام</Label>
+                  <Input dir="rtl" value={eOwnerName} onChange={(e) => setEOwnerName(e.target.value)} />
+                </div>
+              </>
+            )}
+            {editing?.kind !== "BANK" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold">توضیحات</Label>
+                <Input dir="rtl" value={eDesc} onChange={(e) => setEDesc(e.target.value)} className="text-xs" />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">وضعیت</Label>
+              <Select value={eActive} onValueChange={setEActive}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">فعال</SelectItem>
+                  <SelectItem value="false">غیرفعال</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>انصراف</Button>
+            <Button onClick={submitEdit} disabled={saving}>
+              {saving ? "در حال ذخیره…" : "ذخیره تغییرات"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -175,8 +175,10 @@ const schema = defineSchema(
       ),
       ownerUserId: v.optional(v.id("users")), // linked account when the owner has one
       ownerName: v.optional(v.string()), // display name (always stored)
+      ownerPhone: v.optional(v.string()), // contact phone of the owner
       tenantUserId: v.optional(v.id("users")),
       tenantName: v.optional(v.string()),
+      tenantPhone: v.optional(v.string()), // contact phone of the tenant
       parkingSlots: v.number(),
       storageSlots: v.number(),
       isActive: v.boolean(),

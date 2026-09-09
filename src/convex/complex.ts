@@ -183,7 +183,9 @@ export const createUnit = mutation({
     areaM2: v.number(),
     usage: v.union(v.literal("تجاری"), v.literal("اداری"), v.literal("مسکونی"), v.literal("پارکینگ"), v.literal("انباری")),
     ownerName: v.optional(v.string()),
+    ownerPhone: v.optional(v.string()),
     tenantName: v.optional(v.string()),
+    tenantPhone: v.optional(v.string()),
     ownerUserId: v.optional(v.id("users")),
     tenantUserId: v.optional(v.id("users")),
     parkingSlots: v.optional(v.number()),
@@ -213,8 +215,10 @@ export const createUnit = mutation({
       usage: args.usage,
       ownerUserId: args.ownerUserId,
       ownerName: args.ownerName,
+      ownerPhone: args.ownerPhone,
       tenantUserId: args.tenantUserId,
       tenantName: args.tenantName,
+      tenantPhone: args.tenantPhone,
       parkingSlots: args.parkingSlots ?? 0,
       storageSlots: args.storageSlots ?? 0,
       isActive: true,
@@ -236,8 +240,16 @@ export const createUnit = mutation({
 export const updateUnit = mutation({
   args: {
     unitId: v.id("units"),
+    unitNumber: v.optional(v.string()),
+    floor: v.optional(v.number()),
+    areaM2: v.optional(v.number()),
+    usage: v.optional(
+      v.union(v.literal("تجاری"), v.literal("اداری"), v.literal("مسکونی"), v.literal("پارکینگ"), v.literal("انباری")),
+    ),
     ownerName: v.optional(v.string()),
+    ownerPhone: v.optional(v.string()),
     tenantName: v.optional(v.string()),
+    tenantPhone: v.optional(v.string()),
     ownerUserId: v.optional(v.id("users")),
     tenantUserId: v.optional(v.id("users")),
     parkingSlots: v.optional(v.number()),
@@ -250,21 +262,76 @@ export const updateUnit = mutation({
     const unit = await ctx.db.get(args.unitId);
     if (!unit) throw financialError("NOT_FOUND", "واحد یافت نشد.");
     const patch: Record<string, unknown> = {};
-    if (args.ownerName !== undefined) patch.ownerName = args.ownerName;
-    if (args.tenantName !== undefined) patch.tenantName = args.tenantName;
+    if (args.unitNumber !== undefined) {
+      const number = args.unitNumber.trim();
+      const dup = (await ctx.db.query("units").collect()).find(
+        (u) => u._id !== unit._id && u.buildingId === unit.buildingId && u.unitNumber === number,
+      );
+      if (dup) throw financialError("DUPLICATE", `واحد ${number} در این ساختمان قبلاً ثبت شده است.`);
+      patch.unitNumber = number;
+    }
+    if (args.floor !== undefined) patch.floor = args.floor;
+    if (args.areaM2 !== undefined) patch.areaM2 = args.areaM2;
+    if (args.usage !== undefined) patch.usage = args.usage;
+    if (args.ownerName !== undefined) patch.ownerName = args.ownerName || undefined;
+    if (args.ownerPhone !== undefined) patch.ownerPhone = args.ownerPhone || undefined;
+    if (args.tenantName !== undefined) patch.tenantName = args.tenantName || undefined;
+    if (args.tenantPhone !== undefined) patch.tenantPhone = args.tenantPhone || undefined;
     if (args.ownerUserId !== undefined) patch.ownerUserId = args.ownerUserId;
     if (args.tenantUserId !== undefined) patch.tenantUserId = args.tenantUserId;
     if (args.parkingSlots !== undefined) patch.parkingSlots = args.parkingSlots;
     if (args.storageSlots !== undefined) patch.storageSlots = args.storageSlots;
     if (args.isActive !== undefined) patch.isActive = args.isActive;
-    if (args.notes !== undefined) patch.notes = args.notes;
+    if (args.notes !== undefined) patch.notes = args.notes || undefined;
     await ctx.db.patch(unit._id, patch);
     await recordAudit(ctx, {
       userId,
       action: ACTIONS.UPDATE,
       entity: "units",
       entityId: unit._id,
-      before: { ownerName: unit.ownerName, tenantName: unit.tenantName },
+      before: {
+        unitNumber: unit.unitNumber,
+        floor: unit.floor,
+        areaM2: unit.areaM2,
+        usage: unit.usage,
+        ownerName: unit.ownerName,
+        ownerPhone: unit.ownerPhone,
+        tenantName: unit.tenantName,
+        tenantPhone: unit.tenantPhone,
+      },
+      after: patch,
+    });
+  },
+});
+
+export const updateBuilding = mutation({
+  args: {
+    buildingId: v.id("buildings"),
+    name: v.optional(v.string()),
+    address: v.optional(v.string()),
+    floors: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    description: v.optional(v.string()),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireRole(ctx, [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT]);
+    const building = await ctx.db.get(args.buildingId);
+    if (!building) throw financialError("NOT_FOUND", "ساختمان یافت نشد.");
+    const patch: Record<string, unknown> = {};
+    if (args.name !== undefined) patch.name = args.name.trim();
+    if (args.address !== undefined) patch.address = args.address || undefined;
+    if (args.floors !== undefined) patch.floors = args.floors;
+    if (args.phone !== undefined) patch.phone = args.phone || undefined;
+    if (args.description !== undefined) patch.description = args.description || undefined;
+    if (args.isActive !== undefined) patch.isActive = args.isActive;
+    await ctx.db.patch(building._id, patch);
+    await recordAudit(ctx, {
+      userId,
+      action: ACTIONS.UPDATE,
+      entity: "buildings",
+      entityId: building._id,
+      before: { name: building.name },
       after: patch,
     });
   },

@@ -7,6 +7,7 @@ import {
   Building2,
   CalendarRange,
   ChartColumn,
+  DatabaseBackup,
   FileText,
   HandCoins,
   Home,
@@ -38,6 +39,7 @@ import { ReportsSection } from "@/components/complex/ReportsSection";
 import { FiscalSection } from "@/components/complex/FiscalSection";
 import { UsersSection } from "@/components/complex/UsersSection";
 import { MyUnitsSection } from "@/components/complex/MyUnitsSection";
+import { BackupSection } from "@/components/complex/BackupSection";
 
 type SectionId =
   | "fin"
@@ -51,6 +53,7 @@ type SectionId =
   | "reports"
   | "fiscal"
   | "users"
+  | "backup"
   | "my";
 
 interface NavItem {
@@ -72,6 +75,7 @@ const NAV: NavItem[] = [
   { id: "reports", label: "گزارش‌ها", icon: ChartColumn, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
   { id: "fiscal", label: "دوره مالی", icon: CalendarRange, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
   { id: "users", label: "کاربران و نقش‌ها", icon: UserCog, roles: [ROLES.SUPER_ADMIN] },
+  { id: "backup", label: "پشتیبان‌گیری", icon: DatabaseBackup, roles: [ROLES.SUPER_ADMIN] },
   { id: "my", label: "واحدهای من", icon: Home, roles: [ROLES.OWNER, ROLES.TENANT] },
 ];
 
@@ -169,6 +173,8 @@ export default function Dashboard() {
         return <FiscalSection />;
       case "users":
         return <UsersSection />;
+      case "backup":
+        return <BackupSection />;
       case "my":
         return <MyUnitsSection />;
       default:
