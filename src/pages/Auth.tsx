@@ -107,9 +107,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 <div className="mb-4 flex cursor-pointer justify-center" onClick={() => navigate("/")}>
                   <Logo subtitle={false} />
                 </div>
-                <CardTitle className="text-xl text-navy">ورود به پنل مدیریت</CardTitle>
+                <CardTitle className="text-xl text-navy">ورود به پنل مجتمع</CardTitle>
                 <CardDescription>
-                  ایمیل خود را وارد کنید تا وارد شوید یا ثبت‌نام کنید
+                  برای مشاهده شارژها، فاکتورها و وضعیت مالی واحد خود وارد شوید
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleEmailSubmit}>
@@ -231,7 +231,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           )}
 
           <div className="py-4 px-6 text-xs text-center text-muted-foreground bg-muted border-t rounded-b-lg">
-            دپارتمان املاک شهریار | پنل مدیریت فایل‌ها
+            مجتمع تجاری اداری شهریار | سامانه مدیریت مجتمع
           </div>
         </Card>
         </div>

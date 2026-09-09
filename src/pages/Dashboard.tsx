@@ -1,471 +1,347 @@
-import { useMemo, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { useNavigate } from "react-router";
 import {
-  AlertTriangle,
+  ArrowLeftRight,
+  Banknote,
   Building2,
-  ExternalLink,
-  Factory,
+  CalendarRange,
+  ChartColumn,
+  FileText,
+  HandCoins,
+  Home,
+  LayoutDashboard,
   LogOut,
-  Pencil,
-  Plus,
-  Tag,
-  Trash2,
-  Users,
-  Wand2,
+  ReceiptText,
+  ScrollText,
+  ShieldAlert,
+  Sparkles,
+  UserCog,
 } from "lucide-react";
-import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Background } from "@/components/landing/Background";
-import { Logo } from "@/components/landing/Logo";
 import { useAuth } from "@/hooks/use-auth";
+import { normalizeRole, ROLE_LABELS, ROLES, type Role } from "@/lib/roles";
+import { MONEY_UNIT_LABELS, type MoneyUnit } from "@/lib/money";
+import { formatJalaliLong } from "@/lib/jalali";
 import { cn } from "@/lib/utils";
-import { faNumber } from "@/lib/fa";
-import {
-  PropertyFormDialog,
-  type AiDraft,
-  type PropertyInput,
-} from "@/components/dashboard/PropertyFormDialog";
-import { AiListingTab } from "@/components/dashboard/AiListingTab";
-import { ApplicantsTab } from "@/components/dashboard/ApplicantsTab";
-import type { Property } from "@/lib/estate";
+import { useMoneyPref } from "@/components/complex/money-context";
+import { FinDashboardSection } from "@/components/complex/FinDashboardSection";
+import { UnitsSection } from "@/components/complex/UnitsSection";
+import { ChargesSection } from "@/components/complex/ChargesSection";
+import { InvoicesSection } from "@/components/complex/InvoicesSection";
+import { PaymentsSection } from "@/components/complex/PaymentsSection";
+import { ExpensesSection } from "@/components/complex/ExpensesSection";
+import { TreasurySection } from "@/components/complex/TreasurySection";
+import { LedgerSection } from "@/components/complex/LedgerSection";
+import { ReportsSection } from "@/components/complex/ReportsSection";
+import { FiscalSection } from "@/components/complex/FiscalSection";
+import { UsersSection } from "@/components/complex/UsersSection";
+import { MyUnitsSection } from "@/components/complex/MyUnitsSection";
 
-const badgeStyles = {
-  فروش: "bg-emerald-500/95 text-white",
-  اجاره: "bg-orange-500/95 text-white",
-} as const;
+type SectionId =
+  | "fin"
+  | "units"
+  | "charges"
+  | "invoices"
+  | "payments"
+  | "expenses"
+  | "treasury"
+  | "ledger"
+  | "reports"
+  | "fiscal"
+  | "users"
+  | "my";
 
-type Tab = "files" | "ai" | "applicants";
+interface NavItem {
+  id: SectionId;
+  label: string;
+  icon: typeof Home;
+  roles: Role[];
+}
 
-const TABS: { id: Tab; label: string; icon: typeof Building2 }[] = [
-  { id: "files", label: "فایل‌ها", icon: Building2 },
-  { id: "ai", label: "ثبت با هوش مصنوعی", icon: Wand2 },
-  { id: "applicants", label: "متقاضیان", icon: Users },
+const NAV: NavItem[] = [
+  { id: "fin", label: "داشبورد مالی", icon: LayoutDashboard, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "units", label: "واحدها", icon: Building2, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "charges", label: "شارژها", icon: Sparkles, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "invoices", label: "فاکتورها", icon: FileText, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "payments", label: "دریافت و پرداخت", icon: HandCoins, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "expenses", label: "هزینه‌ها", icon: ReceiptText, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "treasury", label: "صندوق و بانک", icon: Banknote, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "ledger", label: "دفتر کل", icon: ScrollText, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "reports", label: "گزارش‌ها", icon: ChartColumn, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "fiscal", label: "دوره مالی", icon: CalendarRange, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
+  { id: "users", label: "کاربران و نقش‌ها", icon: UserCog, roles: [ROLES.SUPER_ADMIN] },
+  { id: "my", label: "واحدهای من", icon: Home, roles: [ROLES.OWNER, ROLES.TENANT] },
 ];
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isLoading } = useAuth();
   const navigate = useNavigate();
-  const list = useQuery(api.properties.list);
-  const create = useMutation(api.properties.create);
-  const update = useMutation(api.properties.update);
-  const remove = useMutation(api.properties.remove);
+  const { unit, setUnit } = useMoneyPref();
+  const ensureRole = useMutation(api.complex.ensureRole);
+  const seedDefaults = useMutation(api.seed.seedDefaults);
 
-  const [tab, setTab] = useState<Tab>("files");
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Property | null>(null);
-  const [draft, setDraft] = useState<AiDraft | null>(null);
-  const [deleting, setDeleting] = useState<Property | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const [section, setSection] = useState<SectionId>("fin");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const stats = useMemo(() => {
-    const items = list ?? [];
-    return [
-      {
-        label: "کل فایل‌ها",
-        value: faNumber(items.length),
-        icon: Building2,
-        tone: "bg-sky-100 text-primary ring-white/70",
-      },
-      {
-        label: "فروش",
-        value: faNumber(items.filter((p) => p.transaction === "فروش").length),
-        icon: Tag,
-        tone: "bg-emerald-100 text-emerald-700 ring-white/70",
-      },
-      {
-        label: "اجاره",
-        value: faNumber(items.filter((p) => p.transaction === "اجاره").length),
-        icon: Tag,
-        tone: "bg-orange-100 text-orange-600 ring-white/70",
-      },
-      {
-        label: "صنعتی",
-        value: faNumber(items.filter((p) => p.category === "صنعتی").length),
-        icon: Factory,
-        tone: "bg-indigo-100 text-indigo-700 ring-white/70",
-      },
-    ];
-  }, [list]);
+  const role = useMemo(() => normalizeRole(user?.role ?? undefined), [user]);
+
+  // Normalize / assign the user's role on mount (first user becomes super_admin).
+  // For the first super_admin, provision the base data (COA, fiscal period,
+  // treasury, charge rules, demo units) — idempotent, never overwrites.
+  useEffect(() => {
+    if (user && !isLoading) {
+      ensureRole().catch(() => {});
+      if (role === ROLES.SUPER_ADMIN) {
+        seedDefaults({ withDemo: true }).catch(() => {});
+      }
+    }
+  }, [user, isLoading, ensureRole, seedDefaults, role]);
+
+  const nav = useMemo(() => {
+    if (!role) return [];
+    return NAV.filter((n) => n.roles.includes(role));
+  }, [role]);
+
+  const defaultSection = useMemo<SectionId>(() => {
+    if (role === ROLES.OWNER || role === ROLES.TENANT) return "my";
+    return "fin";
+  }, [role]);
+
+  const activeSection = nav.some((n) => n.id === section) ? section : defaultSection;
 
   const handleSignOut = async () => {
     await signOut();
     navigate("/");
   };
 
-  const openCreate = () => {
-    setEditing(null);
-    setDraft(null);
-    setFormOpen(true);
-  };
+  if (isLoading || user === undefined) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background">
+        <div className="animate-pulse text-sm text-muted-foreground">در حال بارگذاری…</div>
+      </main>
+    );
+  }
 
-  const openCreateFromAi = (aiDraft: AiDraft) => {
-    setDraft(aiDraft);
-    setEditing(null);
-    setFormOpen(true);
-    toast.success("اطلاعات توسط هوش مصنوعی استخراج شد", {
-      description: "پیش از ثبت، فرم را بررسی و در صورت نیاز ویرایش کنید.",
-    });
-  };
+  // Guard role has no dashboard access (spec: guard بدون دسترسی).
+  if (role === ROLES.GUARD) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="w-full max-w-md rounded-3xl border border-border/70 bg-card p-8 text-center">
+          <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+            <ShieldAlert className="size-7" />
+          </span>
+          <h1 className="mt-4 text-lg font-extrabold text-foreground">دسترسی محدود</h1>
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">
+            حساب شما با نقش «نگهبان» ثبت شده است و به پنل مدیریت مالی دسترسی ندارد. برای دریافت دسترسی، با مدیر مجتمع تماس بگیرید.
+          </p>
+          <Button className="mt-6" onClick={handleSignOut}>
+            <LogOut className="size-4" />
+            خروج
+          </Button>
+        </div>
+      </main>
+    );
+  }
 
-  const openEdit = (property: Property) => {
-    setEditing(property);
-    setDraft(null);
-    setFormOpen(true);
-  };
-
-  const handleSave = async (data: PropertyInput) => {
-    setSaving(true);
-    try {
-      if (editing) {
-        await update({ id: editing._id, ...data });
-        toast.success("فایل به‌روزرسانی شد");
-      } else {
-        await create(data);
-        toast.success("فایل جدید ثبت شد");
-      }
-      setFormOpen(false);
-      setEditing(null);
-      setDraft(null);
-    } catch {
-      toast.error("ذخیره با خطا مواجه شد. لطفا دوباره تلاش کنید.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleting) return;
-    setRemoving(true);
-    try {
-      await remove({ id: deleting._id as Id<"properties"> });
-      toast.success("فایل حذف شد");
-      setDeleting(null);
-    } catch {
-      toast.error("حذف با خطا مواجه شد. لطفا دوباره تلاش کنید.");
-    } finally {
-      setRemoving(false);
+  const renderSection = (id: SectionId) => {
+    switch (id) {
+      case "fin":
+        return <FinDashboardSection />;
+      case "units":
+        return <UnitsSection />;
+      case "charges":
+        return <ChargesSection />;
+      case "invoices":
+        return <InvoicesSection />;
+      case "payments":
+        return <PaymentsSection />;
+      case "expenses":
+        return <ExpensesSection />;
+      case "treasury":
+        return <TreasurySection />;
+      case "ledger":
+        return <LedgerSection />;
+      case "reports":
+        return <ReportsSection />;
+      case "fiscal":
+        return <FiscalSection />;
+      case "users":
+        return <UsersSection />;
+      case "my":
+        return <MyUnitsSection />;
+      default:
+        return <FinDashboardSection />;
     }
   };
 
   return (
-    <main className="relative min-h-screen overflow-x-clip">
-      <Background />
-
-      {/* header */}
-      <header className="sticky top-0 z-40 border-b border-white/60 bg-white/60 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-          <a href="/" className="shrink-0" aria-label="بازگشت به سایت">
-            <Logo subtitle={false} />
-          </a>
-          <div className="flex items-center gap-2">
-            <Button
-              asChild
-              variant="ghost"
-              className="hidden h-9 rounded-full px-3 text-xs font-bold text-navy hover:bg-white/70 sm:inline-flex"
-            >
-              <a href="/">
-                <ExternalLink className="size-3.5" />
-                مشاهده سایت
-              </a>
-            </Button>
-            <span className="glass-soft hidden rounded-full px-3.5 py-1.5 text-xs font-bold text-navy md:inline-block">
-              {user?.name ?? "مدیر"}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={handleSignOut}
-              className="glass-soft h-9 rounded-full px-3.5 text-xs font-bold text-navy hover:bg-white/70"
-            >
-              <LogOut className="size-3.5" />
-              خروج
-            </Button>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background">
+      {/* mobile top bar */}
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur lg:hidden">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="flex items-center gap-2 text-sm font-extrabold text-foreground"
+        >
+          <ArrowLeftRight className="size-5 rotate-90 text-primary" />
+          منوی پنل
+        </button>
+        <span className="text-xs font-bold text-muted-foreground">{ROLE_LABELS[role]}</span>
       </header>
 
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
-        {/* heading */}
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              دپارتمان املاک شهریار
-            </p>
-            <h1 className="mt-1 text-2xl font-extrabold text-navy sm:text-3xl">
-              پنل مدیریت
-            </h1>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              فایل‌های ملکی را ثبت و ویرایش کنید، با هوش مصنوعی از روی گفتار یا متن
-              فایل بسازید و فایل‌های مناسب را به متقاضیان پیشنهاد دهید.
-            </p>
-          </div>
-          {tab === "files" && (
-            <Button
-              onClick={openCreate}
-              className="gold-gradient h-11 rounded-xl px-5 text-sm font-bold text-white shadow-[0_14px_30px_-14px_rgb(184_137_28/0.9)] ring-1 ring-white/60 transition hover:brightness-105"
-            >
-              <Plus className="size-4" />
-              افزودن فایل جدید
-            </Button>
-          )}
+      {/* mobile drawer */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
+          <aside className="absolute inset-y-0 right-0 w-72 overflow-y-auto border-l border-border/70 bg-card p-4">
+            <SidebarContent
+              role={role}
+              unit={unit}
+              setUnit={setUnit}
+              nav={nav}
+              activeSection={activeSection}
+              onSelect={(id) => {
+                setSection(id);
+                setSidebarOpen(false);
+              }}
+              onSignOut={handleSignOut}
+              userName={user?.name}
+              compact
+            />
+          </aside>
         </div>
+      )}
 
-        {/* tabs */}
-        <div className="glass-soft inline-flex max-w-full flex-wrap rounded-full p-1">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition sm:text-sm",
-                tab === t.id
-                  ? "bg-primary text-white shadow-md"
-                  : "text-navy hover:bg-white/70",
-              )}
-            >
-              <t.icon className="size-4" />
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex">
+        {/* desktop sidebar */}
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 overflow-y-auto border-l border-border/70 bg-card lg:block">
+          <SidebarContent
+            role={role}
+            unit={unit}
+            setUnit={setUnit}
+            nav={nav}
+            activeSection={activeSection}
+            onSelect={setSection}
+            onSignOut={handleSignOut}
+            userName={user?.name}
+          />
+        </aside>
 
-        {/* files tab */}
-        {tab === "files" && (
-          <>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              {stats.map((stat) => (
-                <div key={stat.label} className="glass flex items-center gap-3 rounded-2xl p-4">
-                  <span
-                    className={cn(
-                      "flex size-11 shrink-0 items-center justify-center rounded-xl ring-1",
-                      stat.tone,
-                    )}
-                  >
-                    <stat.icon className="size-5" />
-                  </span>
-                  <div className="leading-tight">
-                    <p className="text-lg font-extrabold text-navy">{stat.value}</p>
-                    <p className="text-[11px] text-muted-foreground">{stat.label}</p>
-                  </div>
-                </div>
-              ))}
+        {/* main content */}
+        <main className="min-w-0 flex-1">
+          <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:py-8">
+            {/* desktop header */}
+            <div className="mb-6 hidden items-center justify-between gap-4 lg:flex">
+              <div>
+                <h1 className="text-xl font-extrabold tracking-tight text-foreground">
+                  مجتمع تجاری اداری شهریار
+                </h1>
+                <p className="mt-0.5 text-xs text-muted-foreground">{formatJalaliLong(Date.now())}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-border/70 bg-card px-3.5 py-1.5 text-xs font-bold text-foreground">
+                  {user?.name ?? "کاربر"}
+                  <span className="ms-2 text-muted-foreground">— {ROLE_LABELS[role]}</span>
+                </span>
+                <Button variant="outline" size="sm" className="h-9 gap-1 text-xs font-bold" onClick={handleSignOut}>
+                  <LogOut className="size-3.5" />
+                  خروج
+                </Button>
+              </div>
             </div>
 
-            <div className="glass overflow-hidden rounded-[1.75rem]">
-              {list === undefined ? (
-                <div className="space-y-3 p-5">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="h-14 animate-pulse rounded-xl bg-sky-100/80" />
-                  ))}
-                </div>
-              ) : list.length === 0 ? (
-                <div className="flex flex-col items-center gap-4 px-6 py-16 text-center">
-                  <span className="glass-soft flex size-16 items-center justify-center rounded-2xl text-gold-deep">
-                    <Building2 className="size-7" />
-                  </span>
-                  <div>
-                    <p className="text-base font-extrabold text-navy">
-                      هنوز فایلی ثبت نشده است
-                    </p>
-                    <p className="mt-1.5 text-sm text-muted-foreground">
-                      اولین فایل را با دکمه «افزودن فایل جدید» یا از طریق «ثبت با هوش
-                      مصنوعی» ثبت کنید.
-                    </p>
-                  </div>
-                  <Button
-                    onClick={openCreate}
-                    className="gold-gradient h-10 rounded-full px-6 text-sm font-bold text-white shadow-md ring-1 ring-white/60"
-                  >
-                    <Plus className="size-4" />
-                    افزودن فایل جدید
-                  </Button>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-xs font-extrabold text-navy">
-                        فایل
-                      </TableHead>
-                      <TableHead className="hidden text-xs font-extrabold text-navy md:table-cell">
-                        معامله
-                      </TableHead>
-                      <TableHead className="hidden text-xs font-extrabold text-navy lg:table-cell">
-                        دسته‌بندی
-                      </TableHead>
-                      <TableHead className="hidden text-xs font-extrabold text-navy lg:table-cell">
-                        منطقه
-                      </TableHead>
-                      <TableHead className="text-xs font-extrabold text-navy">
-                        قیمت
-                      </TableHead>
-                      <TableHead className="text-end text-xs font-extrabold text-navy">
-                        عملیات
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {list.map((property) => (
-                      <TableRow key={property._id} className="hover:bg-white/60">
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={property.image}
-                              alt=""
-                              loading="lazy"
-                              className="h-12 w-16 shrink-0 rounded-lg object-cover ring-1 ring-white/70"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.visibility = "hidden";
-                              }}
-                            />
-                            <div className="min-w-0">
-                              <p className="line-clamp-1 text-sm font-bold text-navy">
-                                {property.title}
-                              </p>
-                              <p className="line-clamp-1 text-[11px] text-muted-foreground">
-                                {property.location}
-                              </p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <span
-                            className={cn(
-                              "inline-block rounded-full px-2.5 py-1 text-[11px] font-bold",
-                              badgeStyles[property.transaction],
-                            )}
-                          >
-                            {property.transaction}
-                          </span>
-                        </TableCell>
-                        <TableCell className="hidden text-xs font-medium text-muted-foreground lg:table-cell">
-                          {property.category}
-                        </TableCell>
-                        <TableCell className="hidden text-xs font-medium text-muted-foreground lg:table-cell">
-                          {property.area}
-                        </TableCell>
-                        <TableCell>
-                          <p className="line-clamp-1 max-w-[150px] text-xs font-bold text-navy">
-                            {property.price ?? faNumber(property.priceValue)}
-                          </p>
-                        </TableCell>
-                        <TableCell className="text-end">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="ویرایش"
-                              onClick={() => openEdit(property)}
-                              className="size-9 rounded-lg text-primary hover:bg-white/80"
-                            >
-                              <Pencil className="size-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="حذف"
-                              onClick={() => setDeleting(property)}
-                              className="size-9 rounded-lg text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* AI listing tab */}
-        {tab === "ai" && (
-          <div className="max-w-4xl">
-            <AiListingTab onDraft={openCreateFromAi} />
+            {renderSection(activeSection)}
           </div>
-        )}
+        </main>
+      </div>
+    </div>
+  );
+}
 
-        {/* applicants tab */}
-        {tab === "applicants" && <ApplicantsTab />}
+function SidebarContent({
+  role,
+  unit,
+  setUnit,
+  nav,
+  activeSection,
+  onSelect,
+  onSignOut,
+  userName,
+  compact = false,
+}: {
+  role: Role;
+  unit: MoneyUnit;
+  setUnit: (unit: MoneyUnit) => void;
+  nav: NavItem[];
+  activeSection: SectionId;
+  onSelect: (id: SectionId) => void;
+  onSignOut: () => void;
+  userName?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className="flex h-full flex-col">
+      <div className={cn("flex items-center gap-2.5 border-b border-border/70 px-4 py-4", compact && "py-3")}>
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <Building2 className="size-5" />
+        </span>
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-sm font-extrabold text-foreground">مجتمع شهریار</p>
+          <p className="truncate text-[11px] text-muted-foreground">{userName ?? "پنل مدیریت"}</p>
+        </div>
       </div>
 
-      {/* create / edit dialog */}
-      <PropertyFormDialog
-        open={formOpen}
-        onOpenChange={(open) => {
-          setFormOpen(open);
-          if (!open) {
-            setEditing(null);
-            setDraft(null);
-          }
-        }}
-        property={editing}
-        draft={draft}
-        pending={saving}
-        onSave={handleSave}
-      />
+      <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
+        <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          {ROLE_LABELS[role]}
+        </p>
+        {nav.map((item) => {
+          const active = activeSection === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onSelect(item.id)}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold transition",
+                active
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <item.icon className="size-4 shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
-      {/* delete confirmation */}
-      <AlertDialog
-        open={deleting !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(null);
-        }}
-      >
-        <AlertDialogContent className="glass max-w-md border-white/60">
-          <AlertDialogHeader>
-            <div className="mb-2 flex size-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
-              <AlertTriangle className="size-5" />
-            </div>
-            <AlertDialogTitle className="text-navy">حذف فایل ملک</AlertDialogTitle>
-            <AlertDialogDescription>
-              آیا از حذف «{deleting?.title}» مطمئن هستید؟ این عمل قابل بازگشت نیست.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={removing}
-              className="h-10 rounded-xl px-5 text-sm font-bold text-muted-foreground"
-            >
-              انصراف
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                handleDelete();
-              }}
-              disabled={removing}
-              className="h-10 rounded-xl bg-destructive px-5 text-sm font-bold text-white hover:bg-destructive/90"
-            >
-              {removing ? "در حال حذف..." : "حذف فایل"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </main>
+      <div className="space-y-2 border-t border-border/70 p-3">
+        <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/30 px-3 py-2">
+          <span className="text-[11px] font-bold text-muted-foreground">واحد نمایش مبالغ</span>
+          <div className="inline-flex items-center gap-0.5 rounded-full border border-border bg-background p-0.5">
+            {(["toman", "rial"] as MoneyUnit[]).map((u) => (
+              <button
+                key={u}
+                onClick={() => setUnit(u)}
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-[11px] font-bold transition",
+                  unit === u ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {MONEY_UNIT_LABELS[u]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button
+          onClick={onSignOut}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs font-bold text-destructive transition hover:bg-destructive/10 lg:hidden"
+        >
+          <LogOut className="size-3.5" />
+          خروج از حساب
+        </button>
+      </div>
+    </div>
   );
 }

@@ -215,7 +215,9 @@ export const createCharge = mutation({
     const account = await ctx.db.get(unit.financialAccountId);
     if (!account) throw financialError("NOT_FOUND", "حساب مالی واحد یافت نشد.");
 
-    const dedupeKey = `${args.unitId}|${args.periodYear}|${args.periodMonth ?? ""}|${args.chargeType}|${args.sourceRuleId ?? ""}`;
+    // Idempotency: the same unit+period+type+rule+amount+title is a duplicate;
+    // distinct manual charges (e.g. two special charges) stay allowed.
+    const dedupeKey = `${args.unitId}|${args.periodYear}|${args.periodMonth ?? ""}|${args.chargeType}|${args.sourceRuleId ?? ""}|${amount}|${args.title.trim()}`;
     const existing = await ctx.db
       .query("charges")
       .withIndex("by_dedupe", (q) => q.eq("dedupeKey", dedupeKey))

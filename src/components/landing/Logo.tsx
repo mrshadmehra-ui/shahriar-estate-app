@@ -32,7 +32,7 @@ export function Logo({ subtitle = true, className, light = false }: LogoProps) {
             light ? "text-white" : "gold-gradient-text",
           )}
         >
-          املاک شهریار
+          مجتمع شهریار
         </span>
         {subtitle && (
           <span
@@ -41,7 +41,7 @@ export function Logo({ subtitle = true, className, light = false }: LogoProps) {
               light ? "text-white/75" : "text-muted-foreground",
             )}
           >
-            انتخاب مطمئن شما
+            سامانه مدیریت مجتمع
           </span>
         )}
       </span>
