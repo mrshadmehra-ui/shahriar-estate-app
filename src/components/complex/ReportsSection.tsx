@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import { ChartColumn, Search, TrendingDown, TrendingUp, Users2, Wallet } from "lucide-react";
+import { ChartColumn, FileDown, Printer, Search, TrendingDown, TrendingUp, Users2, Wallet } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { toFa } from "@/lib/fa";
 import { useMoneyPref } from "./money-context";
 import { Badge, EmptyState, LoadingRow, Panel, SectionHeader } from "./ui";
 import { INVOICE_STATUS_LABELS } from "./labels";
+import { downloadCsv, printHtml } from "@/lib/export";
 
 type Tab = "debtors" | "income" | "expense" | "cashflow" | "search";
 
@@ -38,6 +39,38 @@ export function ReportsSection() {
     () => (debtors ?? []).reduce((s, d) => s + d.netBalanceRial, 0),
     [debtors],
   );
+
+  const reportSubtitle = (label: string) =>
+    `${label} — مجتمع تجاری اداری شهریار — تاریخ تهیه: ${formatJalali(Date.now())}`;
+  const ageLabel = (days: number) =>
+    days < 30 ? "کمتر از ۱ ماه" : days < 90 ? "۱ تا ۳ ماه" : days < 180 ? "۳ تا ۶ ماه" : "بیش از ۶ ماه";
+
+  const debtorsRows = () =>
+    (debtors ?? []).map((d) => [
+      d.unit ? `واحد ${d.unit.unitNumber}` : "—",
+      d.accountNumber,
+      d.oldestDueDate ? formatJalali(d.oldestDueDate) : "—",
+      formatMoney(d.netBalanceRial, unit),
+      ageLabel(d.ageDays),
+    ]);
+  const incomeRows = () => [
+    ...(income?.rows ?? []).map((r) => [r.code, r.name, formatMoney(r.netRial, unit)]),
+    ["جمع", "", formatMoney(income?.totalRial ?? 0, unit)],
+  ];
+  const expenseRows = () => [
+    ...(expense?.rows ?? []).map((r) => [r.code, r.name, formatMoney(r.netRial, unit)]),
+    ["جمع", "", formatMoney(expense?.totalRial ?? 0, unit)],
+  ];
+  const cashflowRows = () => [
+    ["ورودی وجه (۳۰ روز)", formatMoney(cashflow?.inflowRial ?? 0, unit), ""],
+    ["خروجی وجه (۳۰ روز)", "", formatMoney(cashflow?.outflowRial ?? 0, unit)],
+    ["خالص جریان نقدی", formatMoney(cashflow?.netRial ?? 0, unit), ""],
+    ...(cashflow?.days ?? []).map((d) => [
+      formatJalali(new Date(d.day).getTime()),
+      formatMoney(d.inflowRial, unit),
+      formatMoney(d.outflowRial, unit),
+    ]),
+  ];
 
   const TABS: { id: Tab; label: string; icon: typeof Search }[] = [
     { id: "debtors", label: "بدهکاران", icon: Users2 },
@@ -77,6 +110,10 @@ export function ReportsSection() {
               گزارش بدهکاران
             </h3>
             <div className="flex items-center gap-2">
+              <ExportButtons
+                onCsv={() => downloadCsv("debtors.csv", ["واحد", "شماره حساب", "قدیمی‌ترین بدهی", "بدهی", "سن بدهی"], debtorsRows())}
+                onPrint={() => printHtml("گزارش بدهکاران", reportSubtitle(`بدهکاران — ${toFa(debtors?.length ?? 0)} واحد — جمع: ${formatMoney(totalDebt, unit)}`), ["واحد", "شماره حساب", "قدیمی‌ترین بدهی", "بدهی", "سن بدهی"], debtorsRows())}
+              />
               <Select value={bucket} onValueChange={setBucket}>
                 <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -149,7 +186,13 @@ export function ReportsSection() {
               <TrendingUp className="size-4 text-emerald-600" />
               گزارش درآمد — از ابتدا تا کنون
             </h3>
-            <Badge tone="bg-emerald-100 text-emerald-700">{thisMonthLabel}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge tone="bg-emerald-100 text-emerald-700">{thisMonthLabel}</Badge>
+              <ExportButtons
+                onCsv={() => downloadCsv("income.csv", ["کد", "سرفصل", "مبلغ"], incomeRows())}
+                onPrint={() => printHtml("گزارش درآمد", reportSubtitle(`درآمد — جمع: ${formatMoney(income?.totalRial ?? 0, unit)}`), ["کد", "سرفصل", "مبلغ"], incomeRows())}
+              />
+            </div>
           </div>
           {income === undefined ? (
             <LoadingRow />
@@ -166,7 +209,13 @@ export function ReportsSection() {
               <TrendingDown className="size-4 text-orange-600" />
               گزارش هزینه — از ابتدا تا کنون
             </h3>
-            <Badge tone="bg-orange-100 text-orange-700">{thisMonthLabel}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge tone="bg-orange-100 text-orange-700">{thisMonthLabel}</Badge>
+              <ExportButtons
+                onCsv={() => downloadCsv("expenses.csv", ["کد", "سرفصل", "مبلغ"], expenseRows())}
+                onPrint={() => printHtml("گزارش هزینه", reportSubtitle(`هزینه‌ها — جمع: ${formatMoney(expense?.totalRial ?? 0, unit)}`), ["کد", "سرفصل", "مبلغ"], expenseRows())}
+              />
+            </div>
           </div>
           {expense === undefined ? (
             <LoadingRow />
@@ -183,6 +232,10 @@ export function ReportsSection() {
               <Wallet className="size-4 text-sky-600" />
               جریان نقدی (۳۰ روز اخیر)
             </h3>
+            <ExportButtons
+              onCsv={() => downloadCsv("cashflow.csv", ["شرح / تاریخ", "ورودی", "خروجی"], cashflowRows())}
+              onPrint={() => printHtml("گزارش جریان نقدی", reportSubtitle("جریان نقدی (۳۰ روز اخیر)"), ["شرح / تاریخ", "ورودی", "خروجی"], cashflowRows())}
+            />
           </div>
           {cashflow === undefined ? (
             <LoadingRow />
@@ -344,6 +397,21 @@ function IncomeExpenseRows({
           {formatMoney(total, unit)}
         </span>
       </div>
+    </div>
+  );
+}
+
+function ExportButtons({ onCsv, onPrint }: { onCsv: () => void; onPrint: () => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5 text-[11px] font-bold" onClick={onCsv}>
+        <FileDown className="size-3.5" />
+        Excel
+      </Button>
+      <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5 text-[11px] font-bold" onClick={onPrint}>
+        <Printer className="size-3.5" />
+        چاپ/PDF
+      </Button>
     </div>
   );
 }

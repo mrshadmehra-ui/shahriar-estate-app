@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import { Printer } from "lucide-react";
+import { FileDown, Printer } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -15,6 +15,7 @@ import { formatMoney } from "@/lib/money";
 import { useMoneyPref } from "./money-context";
 import { Badge, LoadingRow } from "./ui";
 import { INVOICE_STATUS_LABELS, JOURNAL_SOURCE_LABELS as SOURCE_LABELS } from "./labels";
+import { downloadCsv } from "@/lib/export";
 
 
 export function UnitStatementDialog({
@@ -32,15 +33,41 @@ export function UnitStatementDialog({
       <DialogContent className="glass max-h-[85vh] max-w-3xl overflow-y-auto border-white/60">
         <DialogHeader className="flex-row items-center justify-between">
           <DialogTitle className="text-navy">صورت‌حساب واحد</DialogTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-xs font-bold"
-            onClick={() => window.print()}
-          >
-            <Printer className="size-3.5" />
-            چاپ
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs font-bold"
+              onClick={() => {
+                if (!data) return;
+                downloadCsv(
+                  `unit-statement-${data.unit.unitNumber}.csv`,
+                  ["تاریخ", "شرح", "مرجع", "نوع", "بدهکار", "بستانکار", "مانده"],
+                  data.statement.map((row) => [
+                    formatJalali(row.date),
+                    row.description,
+                    row.reference,
+                    SOURCE_LABELS[row.sourceType] ?? row.sourceType,
+                    row.debitRial > 0 ? formatMoney(row.debitRial, unit) : "",
+                    row.creditRial > 0 ? formatMoney(row.creditRial, unit) : "",
+                    formatMoney(Math.abs(row.balanceRial), unit),
+                  ]),
+                );
+              }}
+            >
+              <FileDown className="size-3.5" />
+              Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs font-bold"
+              onClick={() => window.print()}
+            >
+              <Printer className="size-3.5" />
+              چاپ
+            </Button>
+          </div>
         </DialogHeader>
 
         {data === undefined ? (

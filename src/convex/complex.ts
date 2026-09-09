@@ -68,6 +68,25 @@ export const listUsers = query({
   },
 });
 
+/** Users for linking owners/tenants to units (staff). */
+export const listUsersForLinking = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireRole(ctx, [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER]);
+    const users = await ctx.db.query("users").collect();
+    return users
+      .filter((u) => !u.isAnonymous)
+      .map((u) => ({
+        _id: u._id,
+        name: u.name ?? "—",
+        email: u.email ?? undefined,
+        phone: u.phone,
+        role: normalizeRole(u.role ?? undefined),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
 export const setUserRole = mutation({
   args: { userId: v.id("users"), role: v.union(v.literal("super_admin"), v.literal("board_member"), v.literal("accountant"), v.literal("owner"), v.literal("tenant"), v.literal("guard")) },
   handler: async (ctx, args) => {
@@ -186,8 +205,8 @@ export const createUnit = mutation({
     ownerPhone: v.optional(v.string()),
     tenantName: v.optional(v.string()),
     tenantPhone: v.optional(v.string()),
-    ownerUserId: v.optional(v.id("users")),
-    tenantUserId: v.optional(v.id("users")),
+    ownerUserId: v.optional(v.union(v.id("users"), v.null())),
+    tenantUserId: v.optional(v.union(v.id("users"), v.null())),
     parkingSlots: v.optional(v.number()),
     storageSlots: v.optional(v.number()),
     notes: v.optional(v.string()),
@@ -205,7 +224,7 @@ export const createUnit = mutation({
     }
     const financialAccountId = await createUnitFinancialAccount(ctx, {
       unitNumber: number,
-      ownerUserId: args.ownerUserId,
+      ownerUserId: args.ownerUserId ?? undefined,
     });
     const unitId = await ctx.db.insert("units", {
       buildingId: building._id,
@@ -213,10 +232,10 @@ export const createUnit = mutation({
       floor: args.floor,
       areaM2: args.areaM2,
       usage: args.usage,
-      ownerUserId: args.ownerUserId,
+      ownerUserId: args.ownerUserId ?? undefined,
       ownerName: args.ownerName,
       ownerPhone: args.ownerPhone,
-      tenantUserId: args.tenantUserId,
+      tenantUserId: args.tenantUserId ?? undefined,
       tenantName: args.tenantName,
       tenantPhone: args.tenantPhone,
       parkingSlots: args.parkingSlots ?? 0,
@@ -250,8 +269,8 @@ export const updateUnit = mutation({
     ownerPhone: v.optional(v.string()),
     tenantName: v.optional(v.string()),
     tenantPhone: v.optional(v.string()),
-    ownerUserId: v.optional(v.id("users")),
-    tenantUserId: v.optional(v.id("users")),
+    ownerUserId: v.optional(v.union(v.id("users"), v.null())),
+    tenantUserId: v.optional(v.union(v.id("users"), v.null())),
     parkingSlots: v.optional(v.number()),
     storageSlots: v.optional(v.number()),
     isActive: v.optional(v.boolean()),
@@ -277,8 +296,8 @@ export const updateUnit = mutation({
     if (args.ownerPhone !== undefined) patch.ownerPhone = args.ownerPhone || undefined;
     if (args.tenantName !== undefined) patch.tenantName = args.tenantName || undefined;
     if (args.tenantPhone !== undefined) patch.tenantPhone = args.tenantPhone || undefined;
-    if (args.ownerUserId !== undefined) patch.ownerUserId = args.ownerUserId;
-    if (args.tenantUserId !== undefined) patch.tenantUserId = args.tenantUserId;
+    if (args.ownerUserId !== undefined) patch.ownerUserId = args.ownerUserId ?? undefined;
+    if (args.tenantUserId !== undefined) patch.tenantUserId = args.tenantUserId ?? undefined;
     if (args.parkingSlots !== undefined) patch.parkingSlots = args.parkingSlots;
     if (args.storageSlots !== undefined) patch.storageSlots = args.storageSlots;
     if (args.isActive !== undefined) patch.isActive = args.isActive;

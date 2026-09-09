@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
-import { DatabaseBackup, Download, RefreshCw, ShieldCheck } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { AlertTriangle, DatabaseBackup, Download, RefreshCw, ShieldCheck, UploadCloud } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { formatJalali } from "@/lib/jalali";
 import { toFa } from "@/lib/fa";
-import { Panel, SectionHeader } from "./ui";
+import { ConfirmDialog, Panel, SectionHeader } from "./ui";
 
 const TABLE_LABELS: Array<[string, string]> = [
   ["buildings", "ساختمان‌ها"],
@@ -39,6 +42,14 @@ export function BackupSection() {
   const backup = useQuery(api.backup.exportBackup, enabled ? {} : "skip");
   const [downloading, setDownloading] = useState(false);
 
+  // restore
+  const uploadUrl = useAction(api.backup.generateRestoreUploadUrl);
+  const restore = useAction(api.backup.restoreBackup);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [restoring, setRestoring] = useState(false);
+
   const totals = useMemo(() => {
     if (!backup) return 0;
     return TABLE_LABELS.reduce((sum, [key]) => {
@@ -46,6 +57,39 @@ export function BackupSection() {
       return sum + (Array.isArray(rows) ? rows.length : 0);
     }, 0);
   }, [backup]);
+
+  const doRestore = async () => {
+    if (!restoreFile) return;
+    if (confirmText.trim() !== "بازیابی") {
+      toast.error("برای تأیید، عبارت «بازیابی» را تایپ کنید");
+      return;
+    }
+    setRestoring(true);
+    try {
+      const url = await uploadUrl();
+      const res = await fetch(url, { method: "PUT", body: restoreFile });
+      if (!res.ok) throw new Error("آپلود فایل پشتیبان ناموفق بود");
+      const text = await res.text();
+      let storageId = text;
+      try {
+        const j = JSON.parse(text);
+        if (j && typeof j.storageId === "string") storageId = j.storageId;
+      } catch {
+        // response body was the plain storage id
+      }
+      const result = await restore({ storageId: storageId as Id<"_storage"> });
+      toast.success("بازیابی انجام شد", {
+        description: `${toFa(result.total)} رکورد از فایل پشتیبان بازیابی شد.`,
+      });
+      setRestoreFile(null);
+      setConfirmText("");
+      setRestoreOpen(false);
+    } catch (e) {
+      toast.error((e as Error).message ?? "بازیابی ناموفق بود");
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   const download = () => {
     if (!backup) return;
@@ -155,6 +199,58 @@ export function BackupSection() {
         )}
       </div>
 
+      {/* restore */}
+      <Panel>
+        <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
+          <h3 className="flex items-center gap-2 text-sm font-extrabold text-foreground">
+            <UploadCloud className="size-4 text-amber-600" />
+            بازیابی از فایل پشتیبان
+          </h3>
+        </div>
+        <div className="space-y-4 p-4">
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-6 text-amber-800">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>
+              بازیابی، همه داده‌های فعلی مجتمع و حسابداری (ساختمان‌ها، واحدها، شارژها، فاکتورها، پرداخت‌ها، دفتر کل و گزارش عملیات) را حذف و با محتوای فایل پشتیبان جایگزین می‌کند. حساب‌های کاربری و آگهی‌های قبلی دست‌نخورده می‌مانند. این عملیات قابل بازگشت نیست — قبل از آن یک پشتیبان جدید بگیرید.
+            </span>
+          </div>
+          {restoreFile === null ? (
+            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-border/80 bg-muted/20 px-6 py-8 text-center transition hover:border-primary/50 hover:bg-muted/30">
+              <UploadCloud className="size-8 text-muted-foreground" />
+              <span className="text-xs font-bold text-foreground">انتخاب فایل پشتیبان (JSON)</span>
+              <span className="text-[10px] text-muted-foreground">فایلی که از همین بخش دانلود کرده‌اید (shahriar-backup-*.json)</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={(e) => setRestoreFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          ) : (
+            <div className="rounded-2xl border border-border/70 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 leading-tight">
+                  <p className="truncate text-xs font-bold text-foreground" dir="ltr">{restoreFile.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{(restoreFile.size / 1024).toFixed(1)} KB</p>
+                </div>
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => setRestoreFile(null)} disabled={restoring}>
+                  حذف فایل
+                </Button>
+              </div>
+              <Button
+                variant="destructive"
+                className="mt-4 w-full gap-2"
+                onClick={() => setRestoreOpen(true)}
+                disabled={restoring}
+              >
+                <UploadCloud className="size-4" />
+                شروع بازیابی
+              </Button>
+            </div>
+          )}
+        </div>
+      </Panel>
+
       <Panel>
         <h3 className="border-b border-border/70 px-4 py-3 text-sm font-extrabold text-foreground">نکات امنیتی پشتیبان</h3>
         <ul className="space-y-1.5 px-4 py-3 text-[11px] leading-6 text-muted-foreground">
@@ -163,6 +259,33 @@ export function BackupSection() {
           <li>• پس از دانلود، مطمئن شوید فایل باز و خوانا است (قابل باز شدن با هر ویرایشگر JSON).</li>
         </ul>
       </Panel>
+
+      {/* restore confirmation (two-step) */}
+      <ConfirmDialog
+        open={restoreOpen}
+        onOpenChange={(o) => {
+          if (!o) setRestoreOpen(false);
+        }}
+        title="بازیابی از فایل پشتیبان"
+        description={
+          <div className="space-y-2">
+            <p className="text-xs leading-6 text-muted-foreground">
+              همه داده‌های فعلی مجتمع و حسابداری حذف و با محتوای فایل «{restoreFile?.name ?? ""}» جایگزین می‌شود.
+            </p>
+            <p className="text-xs font-bold text-foreground">برای تأیید نهایی، عبارت «بازیابی» را تایپ کنید:</p>
+            <Input
+              dir="rtl"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="بازیابی"
+              className="text-xs"
+            />
+          </div>
+        }
+        confirmLabel="بازیابی داده‌ها"
+        pending={restoring}
+        onConfirm={doRestore}
+      />
     </div>
   );
 }

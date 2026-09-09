@@ -30,6 +30,7 @@ type UnitDoc = Doc<"units">;
 export function UnitsSection() {
   const buildings = useQuery(api.complex.listBuildings);
   const units = useQuery(api.complex.listUnits);
+  const users = useQuery(api.complex.listUsersForLinking);
   const createBuilding = useMutation(api.complex.createBuilding);
   const updateBuilding = useMutation(api.complex.updateBuilding);
   const createUnit = useMutation(api.complex.createUnit);
@@ -50,6 +51,8 @@ export function UnitsSection() {
   const [ownerPhone, setOwnerPhone] = useState("");
   const [tenantName, setTenantName] = useState("");
   const [tenantPhone, setTenantPhone] = useState("");
+  const [ownerUserId, setOwnerUserId] = useState("");
+  const [tenantUserId, setTenantUserId] = useState("");
   const [parking, setParking] = useState("0");
   const [saving, setSaving] = useState(false);
   const [statementUnitId, setStatementUnitId] = useState<Id<"units"> | null>(null);
@@ -69,8 +72,10 @@ export function UnitsSection() {
   const [euUsage, setEuUsage] = useState<string>("تجاری");
   const [euOwnerName, setEuOwnerName] = useState("");
   const [euOwnerPhone, setEuOwnerPhone] = useState("");
+  const [euOwnerUserId, setEuOwnerUserId] = useState("");
   const [euTenantName, setEuTenantName] = useState("");
   const [euTenantPhone, setEuTenantPhone] = useState("");
+  const [euTenantUserId, setEuTenantUserId] = useState("");
   const [euParking, setEuParking] = useState("0");
   const [euStorage, setEuStorage] = useState("0");
   const [euNotes, setEuNotes] = useState("");
@@ -127,8 +132,10 @@ export function UnitsSection() {
         usage: unitUsage as (typeof USAGES)[number],
         ownerName: ownerName.trim() || undefined,
         ownerPhone: ownerPhone.trim() || undefined,
+        ownerUserId: ownerUserId ? (ownerUserId as Id<"users">) : null,
         tenantName: tenantName.trim() || undefined,
         tenantPhone: tenantPhone.trim() || undefined,
+        tenantUserId: tenantUserId ? (tenantUserId as Id<"users">) : null,
         parkingSlots: Number(parking) || 0,
       });
       toast.success("واحد ثبت شد — حساب مالی آن به‌صورت خودکار ایجاد شد");
@@ -136,8 +143,10 @@ export function UnitsSection() {
       setUnitNumber("");
       setOwnerName("");
       setOwnerPhone("");
+      setOwnerUserId("");
       setTenantName("");
       setTenantPhone("");
+      setTenantUserId("");
       setParking("0");
     } catch (e) {
       toast.error((e as Error).message ?? "ثبت واحد ناموفق بود");
@@ -187,8 +196,10 @@ export function UnitsSection() {
     setEuUsage(u.usage);
     setEuOwnerName(u.ownerName ?? "");
     setEuOwnerPhone(u.ownerPhone ?? "");
+    setEuOwnerUserId(u.ownerUserId ?? "");
     setEuTenantName(u.tenantName ?? "");
     setEuTenantPhone(u.tenantPhone ?? "");
+    setEuTenantUserId(u.tenantUserId ?? "");
     setEuParking(String(u.parkingSlots));
     setEuStorage(String(u.storageSlots));
     setEuNotes(u.notes ?? "");
@@ -210,8 +221,10 @@ export function UnitsSection() {
         usage: euUsage as (typeof USAGES)[number],
         ownerName: euOwnerName.trim() || undefined,
         ownerPhone: euOwnerPhone.trim() || undefined,
+        ownerUserId: euOwnerUserId ? (euOwnerUserId as Id<"users">) : null,
         tenantName: euTenantName.trim() || undefined,
         tenantPhone: euTenantPhone.trim() || undefined,
+        tenantUserId: euTenantUserId ? (euTenantUserId as Id<"users">) : null,
         parkingSlots: Number(euParking) || 0,
         storageSlots: Number(euStorage) || 0,
         notes: euNotes.trim() || undefined,
@@ -543,6 +556,34 @@ export function UnitsSection() {
               <Input dir="ltr" className="text-end" value={tenantPhone} onChange={(e) => setTenantPhone(e.target.value)} placeholder="0912-…" />
             </div>
             <div className="space-y-1.5">
+              <Label className="text-xs font-bold">مالک (حساب کاربری ثبت‌شده)</Label>
+              <Select value={ownerUserId || undefined} onValueChange={setOwnerUserId}>
+                <SelectTrigger><SelectValue placeholder="بدون اتصال به حساب" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">بدون اتصال به حساب</SelectItem>
+                  {(users ?? []).map((u) => (
+                    <SelectItem key={u._id} value={u._id}>
+                      {u.name}{u.email ? ` — ${u.email}` : u.phone ? ` — ${u.phone}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">مستأجر (حساب کاربری ثبت‌شده)</Label>
+              <Select value={tenantUserId || undefined} onValueChange={setTenantUserId}>
+                <SelectTrigger><SelectValue placeholder="بدون اتصال به حساب" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">بدون اتصال به حساب</SelectItem>
+                  {(users ?? []).map((u) => (
+                    <SelectItem key={u._id} value={u._id}>
+                      {u.name}{u.email ? ` — ${u.email}` : u.phone ? ` — ${u.phone}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs font-bold">پارکینگ</Label>
               <Input dir="ltr" className="text-end" value={parking} onChange={(e) => setParking(e.target.value)} />
             </div>
@@ -604,6 +645,34 @@ export function UnitsSection() {
             <div className="space-y-1.5">
               <Label className="text-xs font-bold">تلفن مستأجر</Label>
               <Input dir="ltr" className="text-end" value={euTenantPhone} onChange={(e) => setEuTenantPhone(e.target.value)} />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs font-bold">مالک (حساب کاربری)</Label>
+              <Select value={euOwnerUserId || undefined} onValueChange={setEuOwnerUserId}>
+                <SelectTrigger><SelectValue placeholder="بدون اتصال به حساب" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">بدون اتصال به حساب</SelectItem>
+                  {(users ?? []).map((u) => (
+                    <SelectItem key={u._id} value={u._id}>
+                      {u.name}{u.email ? ` — ${u.email}` : u.phone ? ` — ${u.phone}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs font-bold">مستأجر (حساب کاربری)</Label>
+              <Select value={euTenantUserId || undefined} onValueChange={setEuTenantUserId}>
+                <SelectTrigger><SelectValue placeholder="بدون اتصال به حساب" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">بدون اتصال به حساب</SelectItem>
+                  {(users ?? []).map((u) => (
+                    <SelectItem key={u._id} value={u._id}>
+                      {u.name}{u.email ? ` — ${u.email}` : u.phone ? ` — ${u.phone}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-bold">پارکینگ</Label>
