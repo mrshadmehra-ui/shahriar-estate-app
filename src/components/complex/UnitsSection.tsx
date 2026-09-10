@@ -21,7 +21,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { faNumber } from "@/lib/fa";
 import { cn } from "@/lib/utils";
 import { Badge, EmptyState, LoadingRow, Panel, SectionHeader } from "./ui";
-import { UnitStatementDialog } from "./UnitStatementDialog";
 
 const USAGES = ["تجاری", "اداری", "مسکونی", "پارکینگ", "انباری"] as const;
 
@@ -55,7 +54,6 @@ export function UnitsSection() {
   const [tenantUserId, setTenantUserId] = useState("");
   const [parking, setParking] = useState("0");
   const [saving, setSaving] = useState(false);
-  const [statementUnitId, setStatementUnitId] = useState<Id<"units"> | null>(null);
 
   // edit states
   const [editingBuilding, setEditingBuilding] = useState<Doc<"buildings"> | null>(null);
@@ -392,7 +390,16 @@ export function UnitsSection() {
                             variant="ghost"
                             size="sm"
                             className="h-8 gap-1.5 rounded-lg text-xs font-bold text-primary hover:bg-primary/10"
-                            onClick={() => setStatementUnitId(u._id)}
+                            onClick={() => {
+                              const win = window.open(
+                                `/statement/${u._id}?print=1`,
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
+                              // popup blocked (e.g. sandboxed preview) → same-tab fallback
+                              if (!win) window.location.assign(`/statement/${u._id}?print=1`);
+                            }}
+                            title="صورت‌حساب در پنجره جدا باز و آماده چاپ می‌شود"
                           >
                             <ReceiptText className="size-3.5" />
                             صورت‌حساب
@@ -706,12 +713,6 @@ export function UnitsSection() {
         </DialogContent>
       </Dialog>
 
-      <UnitStatementDialog
-        unitId={statementUnitId}
-        onOpenChange={(open) => {
-          if (!open) setStatementUnitId(null);
-        }}
-      />
     </div>
   );
 }

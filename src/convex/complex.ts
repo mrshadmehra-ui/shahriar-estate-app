@@ -2,9 +2,10 @@
  * Complex — buildings, units, owners/tenants, and user role management.
  * Creating a unit automatically creates its main FinancialAccount (FA-xxxxxx).
  */
-import { getAuthUserId } from "@convex-dev/auth/server";
-import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { createAccount, getAuthUserId } from "@convex-dev/auth/server";
+import { ConvexError, v } from "convex/values";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { normalizeRole, ROLES } from "../lib/roles";
 import { recordAudit, ACTIONS } from "./audit";
@@ -105,6 +106,126 @@ export const setUserRole = mutation({
       before: { role: target.role },
       after: { role: args.role },
     });
+  },
+});
+
+/* ---------- manager-created user accounts (email + password) ---------- */
+
+/** Internal: who is calling an action (auth check inside actions). */
+export const getCallerForAction = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const id = await getAuthUserId(ctx);
+    if (id === null) return null;
+    const user = await ctx.db.get(id);
+    if (!user) return null;
+    return { _id: user._id, role: normalizeRole(user.role ?? undefined) };
+  },
+});
+
+/** Internal: does an email already own an account or user row? */
+export const accountExists = internalQuery({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.query("users").withIndex("email", (q) => q.eq("email", args.email)).first();
+    if (user) return true;
+    const account = await ctx.db
+      .query("authAccounts")
+      .withIndex("providerAndAccountId", (q) => q.eq("provider", "password").eq("providerAccountId", args.email))
+      .first();
+    return account !== null;
+  },
+});
+
+/** Internal: audit an admin-created user (actions cannot write directly). */
+export const auditUserCreated = internalMutation({
+  args: {
+    actorId: v.id("users"),
+    targetId: v.id("users"),
+    email: v.string(),
+    role: v.string(),
+    name: v.optional(v.string()),
+    phone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("auditLog", {
+      userId: args.actorId,
+      action: ACTIONS.CREATE,
+      entity: "users",
+      entityId: args.targetId,
+      after: { email: args.email, role: args.role, name: args.name ?? null, phone: args.phone ?? null },
+    });
+  },
+});
+
+/**
+ * Manager (super_admin) creates a user account with email + password + role.
+ * The new user signs in with the same email/password — no OTP needed.
+ */
+export const adminCreateUser = action({
+  args: {
+    email: v.string(),
+    password: v.string(),
+    name: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    role: v.union(v.literal("super_admin"), v.literal("board_member"), v.literal("accountant"), v.literal("owner"), v.literal("tenant"), v.literal("guard")),
+  },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new ConvexError({ code: "INVALID_EMAIL", message: "ایمیل معتبر وارد کنید (مثلاً user@example.com)." });
+    }
+    if (!args.password || args.password.length < 8) {
+      throw new ConvexError({ code: "WEAK_PASSWORD", message: "رمز عبور باید حداقل ۸ کاراکتر باشد." });
+    }
+
+    const caller = await ctx.runQuery(internal.complex.getCallerForAction, {});
+    if (!caller) {
+      throw new ConvexError({ code: "UNAUTHORIZED", message: "برای این عملیات باید وارد حساب خود شوید." });
+    }
+    if (caller.role !== ROLES.SUPER_ADMIN) {
+      throw new ConvexError({
+        code: "UNAUTHORIZED_ACCOUNTING_ACTION",
+        message: "فقط مدیر ارشد می‌تواند کاربر جدید بسازد.",
+      });
+    }
+
+    const exists = await ctx.runQuery(internal.complex.accountExists, { email });
+    if (exists) {
+      throw new ConvexError({
+        code: "DUPLICATE_USER",
+        message: "کاربری با این ایمیل قبلاً ثبت شده است.",
+      });
+    }
+
+    let created;
+    try {
+      created = await createAccount(ctx, {
+        provider: "password",
+        account: { id: email, secret: args.password },
+        profile: {
+          email,
+          name: args.name?.trim() || undefined,
+          phone: args.phone?.trim() || undefined,
+          role: args.role,
+        },
+      });
+    } catch (e) {
+      throw new ConvexError({
+        code: "DUPLICATE_USER",
+        message: "کاربری با این ایمیل قبلاً ثبت شده است (یا رمز عبور نامعتبر است).",
+      });
+    }
+
+    await ctx.runMutation(internal.complex.auditUserCreated, {
+      actorId: caller._id,
+      targetId: created.user._id,
+      email,
+      role: args.role,
+      name: args.name?.trim() || undefined,
+      phone: args.phone?.trim() || undefined,
+    });
+    return { userId: created.user._id };
   },
 });
 

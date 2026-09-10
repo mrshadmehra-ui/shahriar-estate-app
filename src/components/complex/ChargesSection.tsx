@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { CalendarCog, FileWarning, Pencil, Plus, Sparkles, XCircle } from "lucide-react";
+import { CalendarCog, FileWarning, Percent, Pencil, Plus, Power, Sparkles, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -23,6 +23,7 @@ import { formatMoney } from "@/lib/money";
 import { toFa } from "@/lib/fa";
 import { useMoneyPref } from "./money-context";
 import { MoneyInput } from "./MoneyInput";
+import { cn } from "@/lib/utils";
 import { Badge, ConfirmDialog, EmptyState, LoadingRow, Panel, SectionHeader } from "./ui";
 import { CHARGE_STATUS_LABELS, CHARGE_STATUS_TONES, CHARGE_TYPE_LABELS } from "./labels";
 
@@ -39,13 +40,36 @@ export function ChargesSection() {
   const createCharge = useMutation(api.accounting.charges.createCharge);
   const generate = useMutation(api.accounting.charges.generateMonthlyCharges);
   const voidCharge = useMutation(api.accounting.charges.voidCharge);
+  const applyPenalties = useMutation(api.accounting.charges.applyPenalties);
 
   const [ruleOpen, setRuleOpen] = useState(false);
   const [chargeOpen, setChargeOpen] = useState(false);
   const [genOpen, setGenOpen] = useState(false);
+  const [penOpen, setPenOpen] = useState(false);
   const [voiding, setVoiding] = useState<Id<"charges"> | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // penalty form
+  const [penYear, setPenYear] = useState(String(currentJalaliYear()));
+  const [penMonth, setPenMonth] = useState(String(currentJalaliMonth()));
+  const [penPercent, setPenPercent] = useState("10");
+  const [penMax, setPenMax] = useState(0);
+  const [penUnit, setPenUnit] = useState("");
+  const penYearNum = Number(penYear) || currentJalaliYear();
+  const penMonthNum = Number(penMonth) || currentJalaliMonth();
+  const penPercentNum = Number(penPercent) || 0;
+  const penPreview = useQuery(
+    api.accounting.charges.previewPenalties,
+    penOpen && penPercentNum > 0
+      ? {
+          periodYear: penYearNum,
+          periodMonth: penMonthNum,
+          percent: penPercentNum,
+          unitId: penUnit ? (penUnit as Id<"units">) : undefined,
+        }
+      : "skip",
+  );
 
   // edit rule
   const [editingRule, setEditingRule] = useState<Doc<"chargeRules"> | null>(null);
@@ -215,17 +239,51 @@ export function ChargesSection() {
 
   const submitVoid = async () => {
     if (!voiding || !voidReason.trim()) {
-      toast.error("علت باطل‌کردن را وارد کنید");
+      toast.error("علت حذف را وارد کنید");
       return;
     }
     setSaving(true);
     try {
       await voidCharge({ chargeId: voiding, reason: voidReason.trim() });
-      toast.success("شارژ باطل شد — سند معکوس در دفتر کل ثبت شد");
+      toast.success("شارژ حذف/باطل شد — سند معکوس در دفتر کل ثبت شد");
       setVoiding(null);
       setVoidReason("");
     } catch (e) {
-      toast.error((e as Error).message ?? "باطل‌کردن ناموفق بود");
+      toast.error((e as Error).message ?? "حذف شارژ ناموفق بود");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleRule = async (r: Doc<"chargeRules">) => {
+    try {
+      await updateRule({ ruleId: r._id, isActive: !r.isActive });
+      toast.success(r.isActive ? "قانون غیرفعال شد" : "قانون فعال شد");
+    } catch (e) {
+      toast.error((e as Error).message ?? "تغییر وضعیت ناموفق بود");
+    }
+  };
+
+  const submitPenalty = async () => {
+    if (penPercentNum <= 0) {
+      toast.error("درصد جریمه را وارد کنید");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await applyPenalties({
+        periodYear: penYearNum,
+        periodMonth: penMonthNum,
+        percent: penPercentNum,
+        maxPenaltyRial: penMax > 0 ? penMax : undefined,
+        unitId: penUnit ? (penUnit as Id<"units">) : undefined,
+      });
+      toast.success(`جریمه دیرکرد اعمال شد — ${toFa(res.applied)} واحد جریمه گرفت`, {
+        description: `مجموع جریمه: ${formatMoney(res.totalPenaltyRial, unit)} — ${toFa(res.skipped)} مورد تکراری/بدون بدهی نادیده گرفته شد.`,
+      });
+      setPenOpen(false);
+    } catch (e) {
+      toast.error((e as Error).message ?? "اعمال جریمه ناموفق بود");
     } finally {
       setSaving(false);
     }
@@ -245,6 +303,10 @@ export function ChargesSection() {
             <Button variant="outline" size="sm" onClick={() => setGenOpen(true)}>
               <Sparkles className="size-4" />
               تولید شارژ ماهانه
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5 text-rose-600 hover:bg-rose-50" onClick={() => setPenOpen(true)}>
+              <Percent className="size-4" />
+              جریمه دیرکرد
             </Button>
             <Button size="sm" onClick={() => setChargeOpen(true)}>
               <Plus className="size-4" />
@@ -287,6 +349,21 @@ export function ChargesSection() {
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 <Badge tone="bg-sky-100 text-sky-700">{r.categoryCode}</Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={r.isActive ? "غیرفعال‌کردن قانون" : "فعال‌کردن قانون"}
+                  title={r.isActive ? "غیرفعال‌کردن قانون" : "فعال‌کردن قانون"}
+                  className={cn(
+                    "size-7 rounded-lg",
+                    r.isActive
+                      ? "text-emerald-600 hover:bg-emerald-50"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                  onClick={() => toggleRule(r)}
+                >
+                  <Power className="size-3.5" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -350,11 +427,12 @@ export function ChargesSection() {
                       <Badge tone={CHARGE_STATUS_TONES[c.status]}>{CHARGE_STATUS_LABELS[c.status]}</Badge>
                     </TableCell>
                     <TableCell className="text-end">
-                      {c.status === "PENDING" && (
+                      {(c.status === "PENDING" || c.status === "INVOICED") && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label="باطل‌کردن شارژ"
+                          aria-label="حذف شارژ"
+                          title={c.status === "INVOICED" ? "حذف شارژ از فاکتور (فاکتور دوباره محاسبه می‌شود)" : "حذف شارژ"}
                           className="size-8 rounded-lg text-destructive hover:bg-destructive/10"
                           onClick={() => setVoiding(c._id)}
                         >
@@ -618,6 +696,115 @@ export function ChargesSection() {
         </DialogContent>
       </Dialog>
 
+      {/* penalty dialog */}
+      <Dialog open={penOpen} onOpenChange={setPenOpen}>
+        <DialogContent className="glass max-w-2xl border-white/60">
+          <DialogHeader>
+            <DialogTitle className="text-navy">اعمال جریمه دیرکرد</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              برای واحدهایی که شارژ این دوره را پرداخت نکرده‌اند، جریمه درصدی به بدهی آن‌ها اضافه می‌شود — درصد را خودتان انتخاب کنید.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">سال (شمسی)</Label>
+              <Input dir="ltr" className="text-end" value={penYear} onChange={(e) => setPenYear(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">ماه دوره</Label>
+              <Select value={penMonth} onValueChange={setPenMonth}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <SelectItem key={m} value={String(m)}>{toFa(m)} — {["فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور","مهر","آبان","آذر","دی","بهمن","اسفند"][m - 1]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">درصد جریمه (٪)</Label>
+              <Input dir="ltr" className="text-end" value={penPercent} onChange={(e) => setPenPercent(e.target.value)} placeholder="مثلاً ۱۰" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">واحد</Label>
+              <Select value={penUnit || undefined} onValueChange={setPenUnit}>
+                <SelectTrigger><SelectValue placeholder="همه واحدها" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">همه واحدها</SelectItem>
+                  {(units ?? []).map((u) => (
+                    <SelectItem key={u._id} value={u._id}>
+                      واحد {u.unitNumber} — {u.ownerName ?? u.tenantName ?? u.usage}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2 sm:col-span-4">
+              <MoneyInput
+                label="سقف جریمه (اختیاری — خالی = بدون سقف)"
+                valueRial={penMax}
+                onChange={setPenMax}
+                unit={unit}
+                onUnitChange={setUnit}
+              />
+            </div>
+          </div>
+
+          {/* live preview */}
+          <div className="mt-2 rounded-xl border border-border/70">
+            <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+              <p className="text-xs font-extrabold text-foreground">پیش‌نمایش جریمه</p>
+              {penPreview !== undefined && (
+                <p className="text-[11px] font-bold text-muted-foreground">
+                  جمع بدهی: {formatMoney(penPreview.totalUnpaidRial, unit)} — جمع جریمه: {formatMoney(penPreview.totalPenaltyRial, unit)}
+                </p>
+              )}
+            </div>
+            <div className="max-h-56 overflow-y-auto">
+              {penPercentNum <= 0 ? (
+                <p className="px-3 py-6 text-center text-xs text-muted-foreground">درصد جریمه را وارد کنید.</p>
+              ) : penPreview === undefined ? (
+                <p className="px-3 py-6 text-center text-xs text-muted-foreground">در حال محاسبه…</p>
+              ) : penPreview.rows.length === 0 ? (
+                <p className="px-3 py-6 text-center text-xs text-emerald-600">
+                  هیچ واحد بدهکاری برای این دوره پیدا نشد — همه پرداخت کرده‌اند.
+                </p>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {penPreview.rows.map((r) => (
+                    <div key={r.unit._id} className="flex items-center justify-between gap-2 px-3 py-2">
+                      <p className="text-xs font-bold text-foreground">
+                        واحد {r.unit.unitNumber}
+                        <span className="ms-2 text-[10px] font-medium text-muted-foreground">{r.unit.ownerName ?? r.unit.tenantName ?? r.unit.usage}</span>
+                      </p>
+                      <div className="flex items-center gap-3 text-end">
+                        <span className="text-[11px] text-muted-foreground">بدهی: {formatMoney(r.unpaidRial, unit)}</span>
+                        <span className="text-xs font-extrabold tabular-nums text-rose-600">{formatMoney(r.penaltyRial, unit)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <p className="me-auto text-[10px] leading-5 text-muted-foreground">
+              جریمه به‌صورت شارژ «جریمه» ثبت و در دفتر کل (درآمد جریمه دیرکرد) منعکس می‌شود. اجرای دوباره با همان درصد، جریمه تکراری ایجاد نمی‌کند.
+            </p>
+            <Button variant="outline" onClick={() => setPenOpen(false)}>انصراف</Button>
+            <Button
+              onClick={submitPenalty}
+              disabled={saving || penPercentNum <= 0}
+              className="gap-1.5 bg-rose-600 hover:bg-rose-700"
+            >
+              <Percent className="size-4" />
+              {saving ? "در حال اعمال…" : `اعمال جریمه ${toFa(penPercentNum)}٪`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* void confirmation */}
       <ConfirmDialog
         open={voiding !== null}
@@ -627,20 +814,20 @@ export function ChargesSection() {
             setVoidReason("");
           }
         }}
-        title="باطل‌کردن شارژ"
+        title="حذف شارژ"
         description={
           <div className="space-y-2">
-            <p>آیا از باطل‌کردن این شارژ مطمئن هستید؟ سند معکوس در دفتر کل ثبت می‌شود.</p>
+            <p>آیا از حذف این شارژ مطمئن هستید؟ سند معکوس در دفتر کل ثبت می‌شود و در صورت فاکتور شدن، فاکتور دوباره محاسبه می‌شود.</p>
             <Input
               dir="rtl"
-              placeholder="علت باطل‌کردن (الزامی)"
+              placeholder="علت حذف (الزامی)"
               value={voidReason}
               onChange={(e) => setVoidReason(e.target.value)}
               className="text-xs"
             />
           </div>
         }
-        confirmLabel="باطل‌کردن شارژ"
+        confirmLabel="حذف شارژ"
         pending={saving}
         onConfirm={submitVoid}
       />

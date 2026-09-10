@@ -25,6 +25,7 @@ const COA: Array<{ code: string; name: string; type: "asset" | "liability" | "in
   { code: "3-02", name: "درآمد اجاره مشاعات", type: "income", parentCode: "3" },
   { code: "3-03", name: "درآمد پارکینگ", type: "income", parentCode: "3" },
   { code: "3-04", name: "سایر درآمدها", type: "income", parentCode: "3" },
+  { code: "3-05", name: "درآمد جریمه دیرکرد", type: "income", parentCode: "3" },
   { code: "4", name: "هزینه‌ها", type: "expense" },
   { code: "4-01", name: "برق", type: "expense", parentCode: "4" },
   { code: "4-02", name: "آب", type: "expense", parentCode: "4" },
@@ -55,6 +56,25 @@ export const seedDefaults = mutation({
 
     // 1. Chart of accounts
     const coaCount = (await ctx.db.query("chartOfAccounts").collect()).length;
+    // Penalty income account (3-05) is inserted even when the rest of the COA
+    // already exists — old deployments seeded without it.
+    const penaltyIncome = await ctx.db
+      .query("chartOfAccounts")
+      .withIndex("by_code", (q) => q.eq("code", "3-05"))
+      .first();
+    if (!penaltyIncome) {
+      await ctx.db.insert("chartOfAccounts", {
+        code: "3-05",
+        name: "درآمد جریمه دیرکرد",
+        type: "income",
+        parentCode: "3",
+        isActive: true,
+        isSystem: true,
+      });
+      report.penaltyIncome = 1;
+    } else {
+      report.penaltyIncome = 0;
+    }
     if (coaCount === 0) {
       for (const c of COA) {
         await ctx.db.insert("chartOfAccounts", {
