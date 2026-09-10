@@ -178,9 +178,15 @@ export const seedDefaults = mutation({
       report.rules = 0;
     }
 
-    // 5. Demo building + units (only with withDemo)
+    // 5. Demo building + units (only with withDemo, and only when a data wipe
+    // hasn't disabled demo data — after a wipe the program stays clean)
+    const demoSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "demoDataEnabled"))
+      .first();
+    const demoDisabled = demoSetting?.value === false;
     const buildings = await ctx.db.query("buildings").collect();
-    if (withDemo && buildings.length === 0) {
+    if (withDemo && !demoDisabled && buildings.length === 0) {
       const buildingId = await ctx.db.insert("buildings", {
         name: "مجتمع تجاری اداری شهریار",
         address: "شهریار، روبروی شهرک اداری",

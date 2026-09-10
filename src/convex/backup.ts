@@ -11,7 +11,7 @@
  * per-table internal mutations (actions cannot write the db directly).
  */
 import { v } from "convex/values";
-import { action, internalMutation, internalQuery, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { ROLES } from "../lib/roles";
@@ -45,6 +45,39 @@ const BACKUP_TABLES = [
 ] as const;
 
 const RESTORE_MAP_KEY = "restore_map_v1";
+const DEMO_FLAG_KEY = "demoDataEnabled";
+
+/**
+ * Tables removed by the wipe — everything except users/auth (so everyone can
+ * still log in afterwards) and the settings table (holds the demo flag).
+ * Consultations/properties are the legacy test data of the previous template.
+ */
+const WIPE_TABLES = [
+  "journalEntries",
+  "journal",
+  "paymentAllocations",
+  "invoiceItems",
+  "payments",
+  "invoices",
+  "charges",
+  "chargeRules",
+  "expenses",
+  "transfers",
+  "refunds",
+  "cashAccounts",
+  "bankAccounts",
+  "funds",
+  "financialAccounts",
+  "units",
+  "buildings",
+  "fiscalPeriods",
+  "chartOfAccounts",
+  "counters",
+  "notifications",
+  "auditLog",
+  "consultations",
+  "properties",
+] as const;
 
 /** Auth check usable from actions (actions have no direct db access). */
 export const requireSuperAdmin = internalQuery({
@@ -85,6 +118,64 @@ export const exportBackup = query({
       version: 1,
       exportedAt: Date.now(),
       data,
+    };
+  },
+});
+
+/* ------------------------------ Wipe all data ------------------------------ */
+
+/**
+ * Delete ALL data (accounting + complex + legacy test data) so the program can
+ * start clean for real use. Only super_admin and owner roles. Users/auth stay
+ * untouched; base config (COA, fiscal period, treasury, charge rules) re-seeds
+ * automatically on the next dashboard visit, but demo units never come back
+ * (demoDataEnabled flag). The wipe itself is recorded in the audit log.
+ */
+export const wipeAllData = mutation({
+  args: { reason: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireRole(ctx, [ROLES.SUPER_ADMIN, ROLES.OWNER]);
+    const reason = args.reason.trim();
+    if (!reason || reason.length < 3) {
+      throw financialError("INVALID_REASON", "علت پاک‌کردن داده‌ها را وارد کنید (حداقل ۳ کاراکتر).");
+    }
+
+    const deleted: Record<string, number> = {};
+    for (const table of WIPE_TABLES) {
+      const docs = await ctx.db.query(table).collect();
+      for (const doc of docs) await ctx.db.delete(doc._id);
+      deleted[table] = docs.length;
+    }
+
+    // remove any staged restore map and disable future demo seeding
+    const restoreMap = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", RESTORE_MAP_KEY))
+      .first();
+    if (restoreMap) await ctx.db.delete(restoreMap._id);
+    const demoSetting = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", DEMO_FLAG_KEY))
+      .first();
+    if (demoSetting) {
+      await ctx.db.patch(demoSetting._id, { value: false });
+    } else {
+      await ctx.db.insert("settings", { key: DEMO_FLAG_KEY, value: false });
+    }
+
+    // audit AFTER wiping so the entry survives
+    await ctx.db.insert("auditLog", {
+      userId,
+      action: "WIPE_ALL_DATA",
+      entity: "system",
+      entityId: "all",
+      after: { deleted, at: Date.now() },
+      reason,
+    });
+
+    return {
+      deleted,
+      total: Object.values(deleted).reduce((s, n) => s + n, 0),
     };
   },
 });

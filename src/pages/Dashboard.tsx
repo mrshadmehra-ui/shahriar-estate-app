@@ -75,7 +75,7 @@ const NAV: NavItem[] = [
   { id: "reports", label: "گزارش‌ها", icon: ChartColumn, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
   { id: "fiscal", label: "دوره مالی", icon: CalendarRange, roles: [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BOARD_MEMBER] },
   { id: "users", label: "کاربران و نقش‌ها", icon: UserCog, roles: [ROLES.SUPER_ADMIN] },
-  { id: "backup", label: "پشتیبان‌گیری", icon: DatabaseBackup, roles: [ROLES.SUPER_ADMIN] },
+  { id: "backup", label: "پشتیبان‌گیری و پاک‌سازی", icon: DatabaseBackup, roles: [ROLES.SUPER_ADMIN, ROLES.OWNER] },
   { id: "my", label: "واحدهای من", icon: Home, roles: [ROLES.OWNER, ROLES.TENANT] },
 ];
 

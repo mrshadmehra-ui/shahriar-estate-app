@@ -1,13 +1,16 @@
 import { useMemo, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { AlertTriangle, DatabaseBackup, Download, RefreshCw, ShieldCheck, UploadCloud } from "lucide-react";
+import { AlertTriangle, DatabaseBackup, Download, RefreshCw, ShieldCheck, Trash2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatJalali } from "@/lib/jalali";
 import { toFa } from "@/lib/fa";
+import { useAuth } from "@/hooks/use-auth";
+import { normalizeRole, ROLES } from "@/lib/roles";
 import { ConfirmDialog, Panel, SectionHeader } from "./ui";
 
 const TABLE_LABELS: Array<[string, string]> = [
@@ -38,6 +41,10 @@ const TABLE_LABELS: Array<[string, string]> = [
 ];
 
 export function BackupSection() {
+  const { user } = useAuth();
+  const role = normalizeRole(user?.role ?? undefined);
+  const isSuperAdmin = role === ROLES.SUPER_ADMIN;
+
   const [enabled, setEnabled] = useState(false);
   const backup = useQuery(api.backup.exportBackup, enabled ? {} : "skip");
   const [downloading, setDownloading] = useState(false);
@@ -49,6 +56,13 @@ export function BackupSection() {
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [restoring, setRestoring] = useState(false);
+
+  // wipe all data
+  const wipeAllData = useMutation(api.backup.wipeAllData);
+  const [wipeOpen, setWipeOpen] = useState(false);
+  const [wipeConfirmText, setWipeConfirmText] = useState("");
+  const [wipeReason, setWipeReason] = useState("");
+  const [wiping, setWiping] = useState(false);
 
   const totals = useMemo(() => {
     if (!backup) return 0;
@@ -91,6 +105,32 @@ export function BackupSection() {
     }
   };
 
+  const doWipe = async () => {
+    if (wipeConfirmText.trim() !== "پاک کردن همه") {
+      toast.error("برای تأیید نهایی، عبارت «پاک کردن همه» را تایپ کنید");
+      return;
+    }
+    if (!wipeReason.trim()) {
+      toast.error("علت پاک‌کردن داده‌ها را وارد کنید");
+      return;
+    }
+    setWiping(true);
+    try {
+      const result = await wipeAllData({ reason: wipeReason.trim() });
+      toast.success("همه داده‌ها پاک شد", {
+        description: `${toFa(result.total)} رکورد حذف شد — پایگاه داده برای شروع از صفر آماده است (داده‌های آزمایشی دیگر ساخته نمی‌شوند).`,
+      });
+      setWipeOpen(false);
+      setWipeConfirmText("");
+      setWipeReason("");
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (e) {
+      toast.error((e as Error).message ?? "پاک‌سازی ناموفق بود");
+    } finally {
+      setWiping(false);
+    }
+  };
+
   const download = () => {
     if (!backup) return;
     setDownloading(true);
@@ -114,10 +154,11 @@ export function BackupSection() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="پشتیبان‌گیری از داده‌ها"
-        description="خروجی کامل (JSON) از تمام داده‌های مجتمع — ساختمان‌ها، واحدها، حسابداری، دفتر کل و گزارش عملیات. فقط مدیر ارشد."
+        title="پشتیبان‌گیری و پاک‌سازی داده‌ها"
+        description="خروجی کامل (JSON) از تمام داده‌های مجتمع، بازیابی از فایل پشتیبان، و پاک‌کردن کامل داده‌ها برای شروع از صفر — پشتیبان و بازیابی فقط مدیر ارشد، پاک‌سازی فقط مدیر ارشد و مالک."
         action={
-          !enabled ? (
+          isSuperAdmin &&
+          (!enabled ? (
             <Button size="sm" onClick={() => setEnabled(true)}>
               <DatabaseBackup className="size-4" />
               تهیه پشتیبان
@@ -127,10 +168,12 @@ export function BackupSection() {
               <RefreshCw className="size-4" />
               به‌روزرسانی
             </Button>
-          )
+          ))
         }
       />
 
+      {isSuperAdmin && (
+      <>
       <div className="rounded-2xl border border-border/70 bg-card">
         <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
           <h3 className="flex items-center gap-2 text-sm font-extrabold text-foreground">
@@ -193,7 +236,7 @@ export function BackupSection() {
               {downloading ? "در حال آماده‌سازی…" : "دانلود فایل پشتیبان (JSON)"}
             </Button>
             <p className="mt-2 text-center text-[10px] leading-5 text-muted-foreground">
-              فرمت: {`{ app, version, exportedAt, data: { … } }`} — مبالغ همه به ریال ذخیره شده‌اند. بازیابی (Restore) از همین فایل در مرحله بعد قابل افزودن است.
+              فرمت: {`{ app, version, exportedAt, data: { … } }`} — مبالغ همه به ریال ذخیره شده‌اند.
             </p>
           </div>
         )}
@@ -250,13 +293,46 @@ export function BackupSection() {
           )}
         </div>
       </Panel>
+      </>
+      )}
+
+      {/* wipe all data — super_admin + owner */}
+      <Panel className="border-rose-200">
+        <div className="flex items-center justify-between border-b border-rose-100 px-4 py-3">
+          <h3 className="flex items-center gap-2 text-sm font-extrabold text-rose-700">
+            <Trash2 className="size-4" />
+            پاک‌کردن همه داده‌ها (شروع از صفر)
+          </h3>
+          <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-extrabold text-rose-700">فقط مدیر ارشد و مالک</span>
+        </div>
+        <div className="space-y-4 p-4">
+          <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11px] leading-6 text-rose-800">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>
+              همه داده‌های مجتمع و حسابداری (ساختمان‌ها، واحدها، شارژها، فاکتورها، پرداخت‌ها، هزینه‌ها، صندوق/بانک، دفتر کل، گزارش عملیات و داده‌های آزمایشی) <b>برای همیشه حذف</b> می‌شوند. حساب‌های کاربری باقی می‌مانند؛ سرفصل‌ها، دوره مالی و صندوق/بانک پیش‌فرض به‌صورت خودکار دوباره ساخته می‌شوند ولی واحدهای نمونه دیگر ساخته نمی‌شوند. این عملیات قابل بازگشت نیست — قبل از آن حتماً یک پشتیبان بگیرید.
+            </span>
+          </div>
+          <Button
+            variant="destructive"
+            className="w-full gap-2"
+            onClick={() => {
+              setWipeConfirmText("");
+              setWipeReason("");
+              setWipeOpen(true);
+            }}
+          >
+            <Trash2 className="size-4" />
+            پاک‌کردن همه داده‌ها
+          </Button>
+        </div>
+      </Panel>
 
       <Panel>
         <h3 className="border-b border-border/70 px-4 py-3 text-sm font-extrabold text-foreground">نکات امنیتی پشتیبان</h3>
         <ul className="space-y-1.5 px-4 py-3 text-[11px] leading-6 text-muted-foreground">
           <li>• پشتیبان فقط برای مدیر ارشد قابل تهیه است و شامل رمز عبور یا توکن هیچ‌کس نمی‌شود.</li>
           <li>• فایل را در فضای امن (نه داخل همین سامانه) نگه دارید و قبل از بازنویسی نسخه قبلی، نسخه‌های قدیمی را نگه دارید.</li>
-          <li>• پس از دانلود، مطمئن شوید فایل باز و خوانا است (قابل باز شدن با هر ویرایشگر JSON).</li>
+          <li>• پاک‌کردن همه داده‌ها فقط با تأیید دومرحله‌ای (تایپ عبارت «پاک کردن همه») ممکن است و در گزارش عملیات ثبت می‌شود.</li>
         </ul>
       </Panel>
 
@@ -285,6 +361,45 @@ export function BackupSection() {
         confirmLabel="بازیابی داده‌ها"
         pending={restoring}
         onConfirm={doRestore}
+      />
+
+      {/* wipe confirmation (two-step, super_admin + owner) */}
+      <ConfirmDialog
+        open={wipeOpen}
+        onOpenChange={(o) => {
+          if (!o) setWipeOpen(false);
+        }}
+        title="پاک‌کردن همه داده‌ها"
+        description={
+          <div className="space-y-3">
+            <p className="text-xs leading-6 text-muted-foreground">
+              همه داده‌های مجتمع و حسابداری <b>برای همیشه</b> حذف می‌شوند و قابل بازگشت نیستند. حساب‌های کاربری باقی می‌مانند.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">علت پاک‌کردن (الزامی)</Label>
+              <Input
+                dir="rtl"
+                value={wipeReason}
+                onChange={(e) => setWipeReason(e.target.value)}
+                placeholder="مثلاً: حذف داده‌های آزمایشی و شروع استفاده واقعی"
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">برای تأیید نهایی، عبارت «پاک کردن همه» را تایپ کنید:</Label>
+              <Input
+                dir="rtl"
+                value={wipeConfirmText}
+                onChange={(e) => setWipeConfirmText(e.target.value)}
+                placeholder="پاک کردن همه"
+                className="text-xs"
+              />
+            </div>
+          </div>
+        }
+        confirmLabel="پاک‌کردن همه داده‌ها"
+        pending={wiping}
+        onConfirm={doWipe}
       />
     </div>
   );
