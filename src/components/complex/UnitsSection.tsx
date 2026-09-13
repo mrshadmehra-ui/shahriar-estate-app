@@ -392,14 +392,14 @@ export function UnitsSection() {
                             className="h-8 gap-1.5 rounded-lg text-xs font-bold text-primary hover:bg-primary/10"
                             onClick={() => {
                               const win = window.open(
-                                `/statement/${u._id}?print=1`,
+                                `/statement/${u._id}`,
                                 "_blank",
                                 "noopener,noreferrer",
                               );
                               // popup blocked (e.g. sandboxed preview) → same-tab fallback
-                              if (!win) window.location.assign(`/statement/${u._id}?print=1`);
+                              if (!win) window.location.assign(`/statement/${u._id}`);
                             }}
-                            title="صورت‌حساب در پنجره جدا باز و آماده چاپ می‌شود"
+                            title="صورت‌حساب در پنجره جدا باز می‌شود — بازه تاریخی انتخاب و چاپ کنید"
                           >
                             <ReceiptText className="size-3.5" />
                             صورت‌حساب

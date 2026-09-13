@@ -1,31 +1,55 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { ArrowRight, FileDown, Printer } from "lucide-react";
+import { ArrowRight, CalendarRange, FileDown, Printer, X } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatJalali } from "@/lib/jalali";
+import { formatJalali, jalaliStrToMs } from "@/lib/jalali";
 import { formatMoney } from "@/lib/money";
+import { toFa } from "@/lib/fa";
 import { useMoneyPref } from "@/components/complex/money-context";
 import { Badge, LoadingRow } from "@/components/complex/ui";
 import { INVOICE_STATUS_LABELS, JOURNAL_SOURCE_LABELS as SOURCE_LABELS } from "@/components/complex/labels";
 import { downloadCsv } from "@/lib/export";
 
 /**
- * Standalone, print-optimized unit statement (A4, RTL).
- * Opens in its own window/tab — no dialog scroll/clipping issues when printing.
- * Pass ?print=1 to trigger the browser print dialog automatically once loaded.
+ * Standalone, print-optimized unit statement (RTL).
+ * Opens in its own window/tab — no dialog scroll/clipping when printing.
+ *
+ * Date range: from/to Jalali date inputs filter the گردش حساب (server-side).
+ * Empty range = full history. Pass ?print=1 (plus optional &from=...&to=...)
+ * to trigger the browser print dialog automatically once loaded.
+ *
+ * Print sizing: no fixed paper size — the layout reflows and the printer
+ * decides the paper; the table paginates across as many pages as needed.
  */
 export default function UnitStatementPage() {
   const { unitId } = useParams<{ unitId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { unit } = useMoneyPref();
+
+  const [fromStr, setFromStr] = useState(searchParams.get("from") ?? "");
+  const [toStr, setToStr] = useState(searchParams.get("to") ?? "");
+
+  const fromMs = fromStr ? jalaliStrToMs(fromStr) : null;
+  const toMs = toStr ? jalaliStrToMs(toStr, true) : null;
+  const rangeInvalid = (fromStr !== "" && fromMs === null) || (toStr !== "" && toMs === null);
+  const hasRange = fromStr !== "" || toStr !== "";
+
   const data = useQuery(
     api.accounting.reports.unitStatement,
-    unitId ? { unitId: unitId as Id<"units"> } : "skip",
+    unitId
+      ? {
+          unitId: unitId as Id<"units">,
+          from: fromMs ?? undefined,
+          to: toMs ?? undefined,
+        }
+      : "skip",
   );
 
   useEffect(() => {
@@ -35,19 +59,31 @@ export default function UnitStatementPage() {
     }
   }, [searchParams, data]);
 
+  const rangeLabel = () => {
+    if (rangeInvalid) return "بازه نامعتبر";
+    if (!hasRange) return "همه دوره‌ها";
+    const from = fromStr && fromMs !== null ? toFa(fromStr) : "ابتدا";
+    const to = toStr && toMs !== null ? toFa(toStr) : "اکنون";
+    return `${from} تا ${to}`;
+  };
+
   return (
     <div dir="rtl" className="min-h-screen bg-slate-200 print:bg-white">
       <style>{`
-        @page { size: A4; margin: 12mm; }
+        /* No fixed paper size — printer/paper choice in the print dialog decides.
+           Content reflows to any width and paginates across pages freely. */
+        @page { margin: 12mm; }
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
+          thead { display: table-header-group; }
+          tr, td, th { page-break-inside: avoid; break-inside: avoid; }
         }
       `}</style>
 
       {/* toolbar — hidden when printing */}
       <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-slate-300 bg-white/90 px-4 py-2.5 backdrop-blur">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5 text-xs font-bold" onClick={() => navigate("/dashboard")}>
             <ArrowRight className="size-3.5" />
             بازگشت به پنل
@@ -56,7 +92,46 @@ export default function UnitStatementPage() {
             صورت‌حساب واحد {data?.unit?.unitNumber ?? "…"}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* date range filter */}
+          <div className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-1.5">
+            <CalendarRange className="size-3.5 text-slate-500" />
+            <div className="flex items-center gap-1">
+              <Label className="text-[10px] font-bold text-slate-500">از</Label>
+              <Input
+                dir="ltr"
+                className="h-7 w-24 text-end text-xs"
+                placeholder="1405/06/01"
+                value={fromStr}
+                onChange={(e) => setFromStr(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <Label className="text-[10px] font-bold text-slate-500">تا</Label>
+              <Input
+                dir="ltr"
+                className="h-7 w-24 text-end text-xs"
+                placeholder="1405/06/30"
+                value={toStr}
+                onChange={(e) => setToStr(e.target.value)}
+              />
+            </div>
+            {hasRange && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6 rounded-lg"
+                aria-label="حذف بازه"
+                onClick={() => {
+                  setFromStr("");
+                  setToStr("");
+                }}
+              >
+                <X className="size-3.5" />
+              </Button>
+            )}
+          </div>
+
           <Button
             variant="outline"
             size="sm"
@@ -89,7 +164,7 @@ export default function UnitStatementPage() {
       </div>
 
       <div className="mx-auto max-w-[210mm] p-4 sm:p-6 print:m-0 print:max-w-none print:p-0">
-        {/* A4 sheet */}
+        {/* printable sheet */}
         <div className="rounded-2xl bg-white p-6 shadow-lg print:rounded-none print:p-0 print:shadow-none sm:p-10">
           {data === undefined ? (
             <div className="py-16">
@@ -99,7 +174,7 @@ export default function UnitStatementPage() {
             <div className="space-y-6 print:space-y-4">
               {/* letterhead */}
               <div className="border-b-2 border-slate-800 pb-4 text-center">
-                <p className="text-xl font-extrabold text-slate-900">مجتمع تجاری اداری شهریار</p>
+                <p className="text-xl font-extrabold text-slate-900 print:text-lg">مجتمع تجاری اداری شهریار</p>
                 <p className="mt-1 text-sm font-bold text-slate-700">
                   صورت‌حساب واحد {data.unit.unitNumber} — {data.unit.usage}
                 </p>
@@ -107,6 +182,10 @@ export default function UnitStatementPage() {
                   حساب مالی: {data.account.accountNumber} — مالک: {data.unit.ownerName ?? "—"}
                   {data.unit.tenantName ? ` — مستأجر: ${data.unit.tenantName}` : ""}
                   {data.unit.ownerPhone ? ` — تلفن مالک: ${data.unit.ownerPhone}` : ""}
+                </p>
+                <p className="mt-0.5 text-[11px] font-bold text-slate-600">بازه گزارش: {rangeLabel()}</p>
+                <p className="mt-0.5 text-[10px] text-slate-400">
+                  {toFa(data.statement.length)} ردیف گردش حساب در این بازه
                 </p>
               </div>
 
@@ -150,7 +229,7 @@ export default function UnitStatementPage() {
                     {data.statement.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={6} className="border border-slate-300 py-8 text-center text-xs text-slate-500">
-                          تراکنشی ثبت نشده است.
+                          تراکنشی در این بازه ثبت نشده است.
                         </TableCell>
                       </TableRow>
                     )}
@@ -213,8 +292,8 @@ export default function UnitStatementPage() {
                   {data.payments.map((p) => (
                     <div key={p._id} className="flex items-center justify-between gap-2 px-3 py-2">
                       <div className="leading-tight">
-                        <p className="text-xs font-bold text-slate-800">{p.paymentNumber}</p>
-                        <p className="text-[10px] text-slate-500">{formatJalali(p.paymentDate)} — {p.payer}</p>
+                        <p className="text-xs font-bold text-slate-800">{p.paymentNumber} — {p.payer}</p>
+                        <p className="text-[10px] text-slate-500">{formatJalali(p.paymentDate)}</p>
                       </div>
                       <span className="text-xs font-extrabold tabular-nums text-emerald-700">
                         {formatMoney(p.amountRial, unit)}

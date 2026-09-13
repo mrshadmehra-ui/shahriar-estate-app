@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import { ChartColumn, FileDown, Printer, Search, TrendingDown, TrendingUp, Users2, Wallet } from "lucide-react";
+import { CalendarRange, ChartColumn, FileDown, Printer, Search, TrendingDown, TrendingUp, Users2, Wallet, X } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { currentJalaliMonth, currentJalaliYear, formatJalali } from "@/lib/jalali";
+import { currentJalaliMonth, currentJalaliYear, formatJalali, jalaliStrToMs } from "@/lib/jalali";
 import { formatMoney } from "@/lib/money";
 import { toFa } from "@/lib/fa";
 import { useMoneyPref } from "./money-context";
@@ -24,13 +24,34 @@ export function ReportsSection() {
   const [sortBy, setSortBy] = useState("amount");
   const [q, setQ] = useState("");
 
+  // Jalali date range (from/to) — applies to income / expense / cashflow
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const fromMs = rangeFrom ? jalaliStrToMs(rangeFrom) : null;
+  const toMs = rangeTo ? jalaliStrToMs(rangeTo, true) : null;
+  const rangeLabel =
+    rangeFrom || rangeTo
+      ? `${rangeFrom ? toFa(rangeFrom) : "ابتدا"} تا ${rangeTo ? toFa(rangeTo) : "اکنون"}`
+      : "همه دوره‌ها";
+
   const debtors = useQuery(api.accounting.reports.debtorsReport, {
     bucket: bucket as "all" | "1m" | "3m" | "6m",
     sortBy: sortBy as "amount" | "age",
+    from: fromMs ?? undefined,
+    to: toMs ?? undefined,
   });
-  const income = useQuery(api.accounting.reports.incomeReport, {});
-  const expense = useQuery(api.accounting.reports.expenseReport, {});
-  const cashflow = useQuery(api.accounting.reports.cashflowReport, {});
+  const income = useQuery(api.accounting.reports.incomeReport, {
+    from: fromMs ?? undefined,
+    to: toMs ?? undefined,
+  });
+  const expense = useQuery(api.accounting.reports.expenseReport, {
+    from: fromMs ?? undefined,
+    to: toMs ?? undefined,
+  });
+  const cashflow = useQuery(api.accounting.reports.cashflowReport, {
+    from: fromMs ?? undefined,
+    to: toMs ?? undefined,
+  });
   const search = useQuery(api.accounting.reports.searchFinancial, q.trim().length >= 2 ? { q: q.trim() } : "skip");
 
   const thisMonthLabel = `${toFa(currentJalaliYear())}/${toFa(String(currentJalaliMonth()).padStart(2, "0"))}`;
@@ -41,7 +62,7 @@ export function ReportsSection() {
   );
 
   const reportSubtitle = (label: string) =>
-    `${label} — مجتمع تجاری اداری شهریار — تاریخ تهیه: ${formatJalali(Date.now())}`;
+    `${label} — مجتمع تجاری اداری شهریار — بازه: ${rangeLabel} — تاریخ تهیه: ${formatJalali(Date.now())}`;
   const ageLabel = (days: number) =>
     days < 30 ? "کمتر از ۱ ماه" : days < 90 ? "۱ تا ۳ ماه" : days < 180 ? "۳ تا ۶ ماه" : "بیش از ۶ ماه";
 
@@ -101,6 +122,45 @@ export function ReportsSection() {
           </button>
         ))}
       </div>
+
+      {tab !== "search" && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-card px-3 py-2">
+          <CalendarRange className="size-4 text-muted-foreground" />
+          <span className="text-[11px] font-bold text-muted-foreground">بازه:</span>
+          <div className="flex items-center gap-1">
+            <Input
+              dir="ltr"
+              className="h-8 w-28 text-end text-xs"
+              placeholder="1405/01/01"
+              value={rangeFrom}
+              onChange={(e) => setRangeFrom(e.target.value)}
+            />
+            <span className="text-[10px] text-muted-foreground">تا</span>
+            <Input
+              dir="ltr"
+              className="h-8 w-28 text-end text-xs"
+              placeholder="1405/06/30"
+              value={rangeTo}
+              onChange={(e) => setRangeTo(e.target.value)}
+            />
+          </div>
+          {(rangeFrom || rangeTo) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1 px-2 text-[11px] font-bold"
+              onClick={() => {
+                setRangeFrom("");
+                setRangeTo("");
+              }}
+            >
+              <X className="size-3.5" />
+              حذف بازه
+            </Button>
+          )}
+          <Badge tone="bg-muted text-muted-foreground">{rangeLabel}</Badge>
+        </div>
+      )}
 
       {tab === "debtors" && (
         <Panel>

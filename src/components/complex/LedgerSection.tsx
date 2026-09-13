@@ -21,8 +21,8 @@ import { formatJalali } from "@/lib/jalali";
 import { formatMoney } from "@/lib/money";
 import { toFa } from "@/lib/fa";
 import { cn } from "@/lib/utils";
-import { downloadCsv, printHtml } from "@/lib/export";
-import { startOfJalaliDay, startOfJalaliMonth, startOfJalaliYear } from "@/lib/jalali";
+import { downloadCsv, printSectionsHtml } from "@/lib/export";
+import { jalaliStrToMs, startOfJalaliDay, startOfJalaliMonth, startOfJalaliYear } from "@/lib/jalali";
 import { useMoneyPref } from "./money-context";
 import { Badge, EmptyState, LoadingRow, Panel, SectionHeader } from "./ui";
 import { JOURNAL_SOURCE_LABELS } from "./labels";
@@ -111,9 +111,17 @@ export function LedgerSection() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportScope, setExportScope] = useState<ExportScope>("monthly");
   const [exportBusy, setExportBusy] = useState(false);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   // export data — loaded live while the export dialog is open
-  const range = scopeRange(exportOpen ? exportScope : "full");
+  const preset = scopeRange(exportScope);
+  const cFromMs = customFrom ? jalaliStrToMs(customFrom) : null;
+  const cToMs = customTo ? jalaliStrToMs(customTo, true) : null;
+  const range = {
+    from: cFromMs ?? preset.from,
+    to: cToMs ?? preset.to,
+  };
   const exportLedger = useQuery(
     api.accounting.reports.ledgerExport,
     exportOpen ? { from: range.from, to: range.to, max: 2000 } : "skip",
@@ -246,7 +254,7 @@ export function LedgerSection() {
   }));
 
   const scopeSubtitle = () =>
-    `بازه: ${SCOPE_LABELS[exportScope]} — ${SCOPE_OPTIONS.find((s) => s.value === exportScope)?.label} — ${toFa(
+    `بازه: ${customFrom || customTo ? `${customFrom ? toFa(customFrom) : "ابتدا"} تا ${customTo ? toFa(customTo) : "اکنون"} (دلخواه)` : SCOPE_OPTIONS.find((s) => s.value === exportScope)?.label} — ${toFa(
       ledgerExportRows.length,
     )} سند / ${toFa(auditExportRows.length)} رویداد گزارش عملیات`;
 
@@ -502,6 +510,39 @@ export function LedgerSection() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="rounded-xl bg-muted/40 p-3">
+              <p className="mb-2 text-[11px] font-bold text-muted-foreground">بازه دلخواه (اختیاری — جایگزین بازه بالا می‌شود)</p>
+              <div className="flex items-center gap-2">
+                <Input
+                  dir="ltr"
+                  className="h-8 w-28 text-end text-xs"
+                  placeholder="1405/01/01"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                />
+                <span className="text-[10px] text-muted-foreground">تا</span>
+                <Input
+                  dir="ltr"
+                  className="h-8 w-28 text-end text-xs"
+                  placeholder="1405/06/30"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                />
+                {(customFrom || customTo) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1 px-2 text-[11px] font-bold"
+                    onClick={() => {
+                      setCustomFrom("");
+                      setCustomTo("");
+                    }}
+                  >
+                    حذف بازه دلخواه
+                  </Button>
+                )}
+              </div>
+            </div>
             {exportLedger === undefined || exportAudit === undefined ? (
               <LoadingRow />
             ) : (
@@ -548,32 +589,35 @@ export function LedgerSection() {
                 disabled={exportBusy || exportLedger === undefined || exportAudit === undefined}
                 onClick={() => {
                   const sub = scopeSubtitle();
-                  printHtml(
-                    "دفتر کل — مجتمع تجاری اداری شهریار",
+                  printSectionsHtml(
+                    "دفتر کل و گزارش عملیات — مجتمع تجاری اداری شهریار",
                     sub,
-                    ["تاریخ", "شماره سند", "منبع", "شرح", "بدهکار", "بستانکار"],
-                    ledgerExportRows.map((r) => [r.date, r.reference, r.source, r.description, formatMoney(r.debit, unit), formatMoney(r.credit, unit)]),
-                  );
-                  printHtml(
-                    "ردیف‌های دفتر کل — مجتمع تجاری اداری شهریار",
-                    sub,
-                    ["تاریخ", "شماره سند", "منبع", "شرح", "حساب", "بدهکار", "بستانکار"],
-                    ledgerDetailRows.map((r) => [r.date, r.reference, r.source, r.description, r.account, formatMoney(r.debit, unit), formatMoney(r.credit, unit)]),
-                  );
-                  printHtml(
-                    "گزارش عملیات — مجتمع تجاری اداری شهریار",
-                    sub,
-                    ["زمان", "کاربر", "عملیات", "موجودیت", "شناسه", "علت"],
-                    auditExportRows.map((r) => [r.date, r.user, r.action, r.entity, r.entityId, r.reason]),
+                    [
+                      {
+                        title: "اسناد دفتر کل",
+                        columns: ["تاریخ", "شماره سند", "منبع", "شرح", "بدهکار", "بستانکار"],
+                        rows: ledgerExportRows.map((r) => [r.date, r.reference, r.source, r.description, formatMoney(r.debit, unit), formatMoney(r.credit, unit)]),
+                      },
+                      {
+                        title: "ردیف‌های دفتر کل",
+                        columns: ["تاریخ", "شماره سند", "منبع", "شرح", "حساب", "بدهکار", "بستانکار"],
+                        rows: ledgerDetailRows.map((r) => [r.date, r.reference, r.source, r.description, r.account, formatMoney(r.debit, unit), formatMoney(r.credit, unit)]),
+                      },
+                      {
+                        title: "گزارش عملیات (Audit Log)",
+                        columns: ["زمان", "کاربر", "عملیات", "موجودیت", "شناسه", "علت"],
+                        rows: auditExportRows.map((r) => [r.date, r.user, r.action, r.entity, r.entityId, r.reason]),
+                      },
+                    ],
                   );
                 }}
               >
                 <Printer className="size-4" />
-                چاپ / PDF (۳ گزارش)
+                چاپ / PDF کامل
               </Button>
             </div>
             <p className="text-[11px] leading-5 text-muted-foreground">
-              نکته: مرورگرها فقط اجازه باز کردن یک پنجره چاپ را در هر کلیک می‌دهند؛ برای PDF کامل، هر گزارش را جداگانه ذخیره کنید یا از خروجی اکسل استفاده کنید.
+              PDF شامل هر سه گزارش در یک سند پیوسته است (هر بخش از صفحه جدید شروع می‌شود)؛ ابعاد کاغذ را پرینتر شما در پنجره چاپ تعیین می‌کند و هر چند صفحه که لازم باشد ادامه می‌یابد.
             </p>
           </div>
           <DialogFooter>

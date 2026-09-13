@@ -120,7 +120,11 @@ export const financialDashboard = query({
 /* ---------- unit statement ---------- */
 
 export const unitStatement = query({
-  args: { unitId: v.id("units") },
+  args: {
+    unitId: v.id("units"),
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const authed = await requireUser(ctx);
     const unit = await ctx.db.get(args.unitId);
@@ -157,7 +161,13 @@ export const unitStatement = query({
       creditRial: number;
       balanceRial: number;
     }> = entries
-      .filter((e) => !e.isVoided)
+      .filter((e) => {
+        if (e.isVoided) return false;
+        const jDate = journals.get(e.journalId)?.date ?? 0;
+        if (args.from !== undefined && jDate < args.from) return false;
+        if (args.to !== undefined && jDate > args.to) return false;
+        return true;
+      })
       .map((e) => {
         const j = journals.get(e.journalId);
         return {
@@ -211,11 +221,16 @@ export const debtorsReport = query({
   args: {
     bucket: v.optional(v.union(v.literal("all"), v.literal("1m"), v.literal("3m"), v.literal("6m"))),
     sortBy: v.optional(v.union(v.literal("amount"), v.literal("age"))),
+    /** Only count invoices with issueDate >= from as the debt basis. */
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireFinanceViewer(ctx);
     const fas = await ctx.db.query("financialAccounts").collect();
-    const invoices = await ctx.db.query("invoices").collect();
+    let invoices = await ctx.db.query("invoices").collect();
+    if (args.from !== undefined) invoices = invoices.filter((i) => i.issueDate >= args.from!);
+    if (args.to !== undefined) invoices = invoices.filter((i) => i.issueDate <= args.to!);
     const now = Date.now();
 
     const rows = [];

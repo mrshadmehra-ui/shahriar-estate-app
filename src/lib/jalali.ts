@@ -187,3 +187,34 @@ export function startOfJalaliYear(ms: number = Date.now()): number {
   const { year } = toJalaliDate(ms);
   return jalaliToGregorian(year, 1, 1).getTime();
 }
+
+/** Epoch ms -> "1405/06/01" (Latin digits, for date inputs). */
+export function toJalaliStr(ms: number): string {
+  const { year, month, day } = toJalaliDate(ms);
+  return `${year}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}`;
+}
+
+/** Parse "1405/06/01" (Latin or Persian digits) to Jalali parts; null if invalid. */
+export function parseJalaliStr(s: string): { jy: number; jm: number; jd: number } | null {
+  const norm = s
+    .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/[^0-9/]/g, "")
+    .trim();
+  const m = norm.match(/^(\d{3,4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (!m) return null;
+  const jy = Number(m[1]);
+  const jm = Number(m[2]);
+  const jd = Number(m[3]);
+  if (jm < 1 || jm > 12 || jd < 1 || jd > 31) return null;
+  return { jy, jm, jd };
+}
+
+/** "1405/06/01" -> epoch ms (start of day, or end of day when `endOfDay`). */
+export function jalaliStrToMs(s: string, endOfDay = false): number | null {
+  const p = parseJalaliStr(s);
+  if (!p) return null;
+  const d = jalaliToGregorian(p.jy, p.jm, p.jd);
+  if (endOfDay) d.setHours(23, 59, 59, 999);
+  else d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
