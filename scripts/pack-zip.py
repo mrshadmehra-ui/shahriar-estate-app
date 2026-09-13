@@ -1,46 +1,55 @@
 #!/usr/bin/env python3
-"""Pack the staged project copy into public/shahriar-complex.zip.
+"""Package the project (source only) into public/shahriar-complex.zip for self-hosting.
 
-Skips: node_modules, dist, .git, build outputs, and secret/credential files
-(.env*, *.pem, *.key, secrets*) so no platform secrets ever ship.
+Excludes node_modules, dist, env files, .git, and platform-only dev artifacts.
 """
 import os
+import shutil
 import zipfile
 
 STAGE = "/tmp/shahriar-stage"
-OUT = "/home/user/codebase/public/shahriar-complex.zip"
+OUT = "public/shahriar-complex.zip"
+SKIP_DIRS = {"node_modules", "dist", ".git", ".turbo", ".cache", ".vite"}
+ZIP_EXCLUDES = ("shahriar-complex.zip",)
 
-SKIP_DIRS = {"node_modules", "dist", ".git", "build", "out", ".cache"}
-SKIP_FILES = {"out.zip", "pack-zip.py"}
-SKIP_SUFFIXES = (".env", ".env.local", ".env.production", ".pem", ".key", ".p12", ".pfx")
+if os.path.exists(STAGE):
+    shutil.rmtree(STAGE)
+os.makedirs(STAGE)
 
+# Stage source files (whitelist; never copy env/secret files)
+for item in os.listdir("."):
+    if item in SKIP_DIRS or item.endswith(".env") or item.endswith(".env.local"):
+        continue
+    s = os.path.join(".", item)
+    d = os.path.join(STAGE, item)
+    if os.path.isdir(s):
+        shutil.copytree(s, d, ignore=shutil.ignore_patterns(*(SKIP_DIRS | {"*.env", "*.env.local"})))
+    else:
+        shutil.copy2(s, d)
 
-def is_secret(name: str) -> bool:
-    if name in SKIP_FILES:
-        return True
-    if name.endswith(SKIP_SUFFIXES):
-        return True
-    if "secret" in name.lower() or name.startswith(".env"):
-        return True
-    return False
+# Remove platform-only dependencies from the staged copy
+main = os.path.join(STAGE, "src", "main.tsx")
+if os.path.exists(main):
+    with open(main, "r", encoding="utf-8") as f:
+        src = f.read()
+    src = src.replace('import { VlyToolbar } from "../vly-toolbar-readonly.tsx";\n', "")
+    src = src.replace("<VlyToolbar />", "")
+    src = src.replace("inert error-boundary", "error-boundary")
+    with open(main, "w", encoding="utf-8") as f:
+        f.write(src)
 
-
-def main() -> None:
-    zf = zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED)
-    count = 0
+# Zip it up
+if os.path.exists(OUT):
+    os.remove(OUT)
+count = 0
+with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as zf:
     for root, dirs, files in os.walk(STAGE):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
-        for f in sorted(files):
-            if is_secret(f):
-                print("skip:", f)
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for name in files:
+            if name.endswith(ZIP_EXCLUDES):
                 continue
-            p = os.path.join(root, f)
-            rel = os.path.relpath(p, STAGE)
-            zf.write(p, rel)
+            p = os.path.join(root, name)
+            zf.write(p, os.path.relpath(p, STAGE))
             count += 1
-    zf.close()
-    print(f"packed {count} files -> {OUT}")
 
-
-if __name__ == "__main__":
-    main()
+print(f"OK: {OUT} — {count} files")

@@ -20,12 +20,11 @@ import { downloadCsv } from "@/lib/export";
  * Standalone, print-optimized unit statement (RTL).
  * Opens in its own window/tab — no dialog scroll/clipping when printing.
  *
- * Date range: from/to Jalali date inputs filter the گردش حساب (server-side).
- * Empty range = full history. Pass ?print=1 (plus optional &from=...&to=...)
- * to trigger the browser print dialog automatically once loaded.
- *
- * Print sizing: no fixed paper size — the layout reflows and the printer
- * decides the paper; the table paginates across as many pages as needed.
+ * - Date range: from/to Jalali inputs filter the گردش حساب server-side.
+ * - Full-width layout (no artificial max-width) so print uses the whole
+ *   printable area of whatever paper the user picks in the print dialog.
+ * - The table container's horizontal-scroll clip is neutralized in print,
+ *   so no scrollbar bar appears and nothing is cut off.
  */
 export default function UnitStatementPage() {
   const { unitId } = useParams<{ unitId: string }>();
@@ -68,16 +67,19 @@ export default function UnitStatementPage() {
   };
 
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-200 print:bg-white">
+    <div dir="rtl" className="min-h-screen w-full bg-slate-100 print:bg-white">
       <style>{`
-        /* No fixed paper size — printer/paper choice in the print dialog decides.
-           Content reflows to any width and paginates across pages freely. */
+        /* No fixed paper size — the printer/paper choice in the print dialog decides.
+           Content reflows to any width and paginates across as many pages as needed. */
         @page { margin: 12mm; }
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
+          html, body { width: auto !important; }
+          [data-slot="table-container"] { overflow: visible !important; }
           thead { display: table-header-group; }
           tr, td, th { page-break-inside: avoid; break-inside: avoid; }
+          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       `}</style>
 
@@ -163,9 +165,9 @@ export default function UnitStatementPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[210mm] p-4 sm:p-6 print:m-0 print:max-w-none print:p-0">
-        {/* printable sheet */}
-        <div className="rounded-2xl bg-white p-6 shadow-lg print:rounded-none print:p-0 print:shadow-none sm:p-10">
+      {/* Full-width sheet — uses the entire printable area, whatever the paper. */}
+      <div className="w-full px-4 py-6 print:m-0 print:p-0">
+        <div className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-slate-200 print:rounded-none print:p-0 print:shadow-none print:ring-0 sm:p-10">
           {data === undefined ? (
             <div className="py-16">
               <LoadingRow />
@@ -212,9 +214,9 @@ export default function UnitStatementPage() {
               </div>
 
               {/* statement table */}
-              <div>
+              <div className="w-full">
                 <p className="mb-2 text-sm font-extrabold text-slate-900">گردش حساب</p>
-                <Table className="border border-slate-300">
+                <Table className="print:whitespace-normal border border-slate-300">
                   <TableHeader>
                     <TableRow className="bg-slate-100 hover:bg-slate-100">
                       <TableHead className="border border-slate-300 text-[11px] font-extrabold text-slate-700">تاریخ</TableHead>
@@ -260,8 +262,8 @@ export default function UnitStatementPage() {
                 </Table>
               </div>
 
-              {/* invoices */}
-              <div>
+              {/* invoices — continue on the next sheet */}
+              <div className="w-full">
                 <p className="mb-2 text-sm font-extrabold text-slate-900">فاکتورهای واحد</p>
                 <div className="divide-y divide-slate-200 rounded-xl border border-slate-300">
                   {data.invoices.length === 0 && (
@@ -282,8 +284,8 @@ export default function UnitStatementPage() {
                 </div>
               </div>
 
-              {/* payments */}
-              <div>
+              {/* payments — continue on the next sheet */}
+              <div className="w-full">
                 <p className="mb-2 text-sm font-extrabold text-slate-900">پرداخت‌های واحد</p>
                 <div className="divide-y divide-slate-200 rounded-xl border border-slate-300">
                   {data.payments.length === 0 && (

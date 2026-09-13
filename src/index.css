@@ -197,6 +197,25 @@
   }
 }
 
+/* ---------- Print correctness ----------
+   Scroll containers clip content and draw a horizontal scrollbar bar in
+   print output; neutralize them so tables print full-width on any paper. */
+@media print {
+  [data-slot="table-container"] {
+    overflow: visible !important;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
