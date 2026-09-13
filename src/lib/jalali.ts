@@ -166,3 +166,24 @@ export function jalaliMonthKey(ms: number): string {
 export function currentJalaliMonth(): number {
   return toJalaliDate(Date.now()).month;
 }
+
+/* ---------- reporting period helpers ---------- */
+
+/** Epoch ms of the start (00:00 local) of the day a timestamp falls in. */
+export function startOfJalaliDay(ms: number = Date.now()): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** Epoch ms of the first day (00:00) of the Jalali month containing `ms`. */
+export function startOfJalaliMonth(ms: number = Date.now()): number {
+  const { year, month } = toJalaliDate(ms);
+  return jalaliToGregorian(year, month, 1).getTime();
+}
+
+/** Epoch ms of 1 Farvardin (00:00) of the Jalali year containing `ms`. */
+export function startOfJalaliYear(ms: number = Date.now()): number {
+  const { year } = toJalaliDate(ms);
+  return jalaliToGregorian(year, 1, 1).getTime();
+}

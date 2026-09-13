@@ -423,6 +423,70 @@ export const searchFinancial = query({
   },
 });
 
+/* ---------- export feeds (دفتر کل / گزارش عملیات) ---------- */
+
+/**
+ * Journals inside a date range with their entries — feeds the Excel/PDF
+ * export of the general ledger. Returns up to `max` newest-first (the UI
+ * re-sorts to chronological for printing).
+ */
+export const ledgerExport = query({
+  args: {
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
+    max: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireFinanceViewer(ctx);
+    const from = args.from ?? 0;
+    const to = args.to ?? Date.now();
+    const cap = args.max ?? 2000;
+    const journals = (await ctx.db.query("journal").order("desc").collect())
+      .filter((j) => j.date >= from && j.date <= to)
+      .slice(0, cap);
+    const out = [];
+    for (const j of journals) {
+      const entries = await ctx.db
+        .query("journalEntries")
+        .withIndex("by_journal", (q) => q.eq("journalId", j._id))
+        .collect();
+      out.push({ journal: j, entries });
+    }
+    return out.reverse(); // chronological
+  },
+});
+
+/** Audit log inside a date range — feeds the audit-log Excel/PDF export. */
+export const auditExport = query({
+  args: {
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
+    max: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireFinanceViewer(ctx);
+    const from = args.from ?? 0;
+    const to = args.to ?? Date.now();
+    const items = (await ctx.db.query("auditLog").order("desc").collect())
+      .filter((a) => {
+        const t = a._creationTime;
+        return t >= from && t <= to;
+      })
+      .slice(0, args.max ?? 2000);
+    const users = new Map<string, string>();
+    for (const item of items) {
+      if (!users.has(item.userId)) {
+        const u = await ctx.db.get(item.userId);
+        users.set(item.userId, u?.name ?? u?.email ?? "کاربر");
+      }
+    }
+    return items.map((item) => ({
+      ...item,
+      userName: users.get(item.userId) ?? "کاربر",
+    }));
+  },
+});
+
 /* ---------- admin tools ---------- */
 
 export const rebuildBalances = mutation({

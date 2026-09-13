@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { BookOpenCheck, ListTree, Pencil, Plus, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
+import { BookOpenCheck, Download, FileSpreadsheet, ListTree, Pencil, Plus, Printer, RefreshCw, ScrollText, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -21,9 +21,62 @@ import { formatJalali } from "@/lib/jalali";
 import { formatMoney } from "@/lib/money";
 import { toFa } from "@/lib/fa";
 import { cn } from "@/lib/utils";
+import { downloadCsv, printHtml } from "@/lib/export";
+import { startOfJalaliDay, startOfJalaliMonth, startOfJalaliYear } from "@/lib/jalali";
 import { useMoneyPref } from "./money-context";
 import { Badge, EmptyState, LoadingRow, Panel, SectionHeader } from "./ui";
 import { JOURNAL_SOURCE_LABELS } from "./labels";
+
+/* ---------- export (Excel / PDF) of ledger + audit log ---------- */
+
+const SCOPE_OPTIONS = [
+  { value: "daily", label: "روزانه (امروز)" },
+  { value: "monthly", label: "ماهانه (جاری)" },
+  { value: "yearly", label: "سالانه (سال مالی جاری)" },
+  { value: "full", label: "کامل (همه اسناد)" },
+] as const;
+
+type ExportScope = (typeof SCOPE_OPTIONS)[number]["value"];
+
+const SCOPE_LABELS: Record<ExportScope, string> = {
+  daily: "روزانه",
+  monthly: "ماهانه",
+  yearly: "سالانه",
+  full: "کامل",
+};
+
+function scopeRange(scope: ExportScope): { from: number; to: number } {
+  const now = Date.now();
+  switch (scope) {
+    case "daily":
+      return { from: startOfJalaliDay(now), to: now };
+    case "monthly":
+      return { from: startOfJalaliMonth(now), to: now };
+    case "yearly":
+      return { from: startOfJalaliYear(now), to: now };
+    case "full":
+    default:
+      return { from: 0, to: now };
+  }
+}
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  CREATE: "ایجاد",
+  UPDATE: "ویرایش",
+  DELETE_ATTEMPT: "تلاش حذف",
+  PAYMENT: "پرداخت",
+  REFUND: "برگشت وجه",
+  VOID: "ابطال",
+  REVERSAL: "برگشت سند",
+  ROLE_CHANGE: "تغییر نقش",
+  LOGIN: "ورود",
+  LOGOUT: "خروج",
+  ACCOUNTING_ADJUSTMENT: "اصلاح حسابداری",
+  CLOSE_FISCAL_PERIOD: "بستن دوره مالی",
+  GENERATE_CHARGES: "تولید شارژ",
+  RESTORE: "بازیابی پشتیبان",
+  WIPE: "پاکسازی داده‌ها",
+};
 
 const COA_TYPES = [
   { value: "asset", label: "دارایی‌ها" },
@@ -51,7 +104,24 @@ export function LedgerSection() {
   const rebuild = useMutation(api.accounting.reports.rebuildBalances);
   const createAccount = useMutation(api.accounting.accounts.createAccount);
   const updateAccount = useMutation(api.accounting.accounts.updateAccount);
+
   const [rebuilding, setRebuilding] = useState(false);
+
+  // export dialog
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState<ExportScope>("monthly");
+  const [exportBusy, setExportBusy] = useState(false);
+
+  // export data — loaded live while the export dialog is open
+  const range = scopeRange(exportOpen ? exportScope : "full");
+  const exportLedger = useQuery(
+    api.accounting.reports.ledgerExport,
+    exportOpen ? { from: range.from, to: range.to, max: 2000 } : "skip",
+  );
+  const exportAudit = useQuery(
+    api.accounting.reports.auditExport,
+    exportOpen ? { from: range.from, to: range.to, max: 2000 } : "skip",
+  );
 
   // new COA form
   const [coaOpen, setCoaOpen] = useState(false);
@@ -144,16 +214,58 @@ export function LedgerSection() {
   const coaByType = (type: string) =>
     (coa ?? []).filter((a) => a.type === type).sort((a, b) => a.code.localeCompare(b.code));
 
+  const ledgerExportRows = (exportLedger ?? []).map(({ journal, entries }) => ({
+    date: formatJalali(journal.date, true),
+    reference: journal.reference,
+    source: JOURNAL_SOURCE_LABELS[journal.sourceType] ?? journal.sourceType,
+    description: journal.description,
+    debit: entries.reduce((s, e) => s + e.debitRial, 0),
+    credit: entries.reduce((s, e) => s + e.creditRial, 0),
+    reversal: journal.isReversal ? "بله" : "خیر",
+  }));
+
+  const ledgerDetailRows = (exportLedger ?? []).flatMap(({ journal, entries }) =>
+    entries.map((e) => ({
+      date: formatJalali(journal.date, true),
+      reference: journal.reference,
+      source: JOURNAL_SOURCE_LABELS[journal.sourceType] ?? journal.sourceType,
+      description: journal.description,
+      account: `${e.accountCode} — ${e.accountName}`,
+      debit: e.debitRial,
+      credit: e.creditRial,
+    })),
+  );
+
+  const auditExportRows = (exportAudit ?? []).map((a) => ({
+    date: formatJalali(a._creationTime, true),
+    user: a.userName,
+    action: AUDIT_ACTION_LABELS[a.action] ?? a.action,
+    entity: a.entity,
+    entityId: a.entityId,
+    reason: a.reason ?? "",
+  }));
+
+  const scopeSubtitle = () =>
+    `بازه: ${SCOPE_LABELS[exportScope]} — ${SCOPE_OPTIONS.find((s) => s.value === exportScope)?.label} — ${toFa(
+      ledgerExportRows.length,
+    )} سند / ${toFa(auditExportRows.length)} رویداد گزارش عملیات`;
+
   return (
     <div className="space-y-6">
       <SectionHeader
         title="دفتر کل و سرفصل‌های حسابداری"
         description="سرفصل‌ها، همه اسناد حسابداری و بررسی سلامت — منبع حقیقت سیستم دفتر کل است."
         action={
-          <Button variant="outline" size="sm" onClick={doRebuild} disabled={rebuilding}>
-            <RefreshCw className={`size-4 ${rebuilding ? "animate-spin" : ""}`} />
-            بازسازی مانده‌ها
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
+              <Download className="size-4" />
+              خروجی اکسل / PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={doRebuild} disabled={rebuilding}>
+              <RefreshCw className={`size-4 ${rebuilding ? "animate-spin" : ""}`} />
+              بازسازی مانده‌ها
+            </Button>
+          </div>
         }
       />
 
@@ -365,6 +477,107 @@ export function LedgerSection() {
             <Button onClick={submitCreateAccount} disabled={saving}>
               {saving ? "در حال ثبت…" : "ثبت سرفصل"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* export dialog */}
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="glass max-w-lg border-white/60">
+          <DialogHeader>
+            <DialogTitle className="text-navy">خروجی دفتر کل و گزارش عملیات</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              بازه زمانی را انتخاب کنید؛ سپس اکسل (CSV) یا چاپ/PDF بگیرید. اسناد با ردیف‌های دفتر کل و رویدادهای گزارش عملیات هر دو خروجی داده می‌شوند.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold">بازه زمانی</Label>
+              <Select value={exportScope} onValueChange={(v) => setExportScope(v as ExportScope)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SCOPE_OPTIONS.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {exportLedger === undefined || exportAudit === undefined ? (
+              <LoadingRow />
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-muted/40 p-3 text-center">
+                  <p className="text-lg font-extrabold tabular-nums">{toFa(ledgerExportRows.length)}</p>
+                  <p className="text-[11px] text-muted-foreground">سند در این بازه</p>
+                </div>
+                <div className="rounded-xl bg-muted/40 p-3 text-center">
+                  <p className="text-lg font-extrabold tabular-nums">{toFa(auditExportRows.length)}</p>
+                  <p className="text-[11px] text-muted-foreground">رویداد گزارش عملیات</p>
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                className="gap-1.5"
+                disabled={exportBusy || exportLedger === undefined || exportAudit === undefined}
+                onClick={() => {
+                  downloadCsv(
+                    `ledger-${exportScope}.csv`,
+                    ["تاریخ", "شماره سند", "منبع", "شرح", "بدهکار", "بستانکار", "برگشتی"],
+                    ledgerExportRows.map((r) => [r.date, r.reference, r.source, r.description, r.debit, r.credit, r.reversal]),
+                  );
+                  downloadCsv(
+                    `ledger-entries-${exportScope}.csv`,
+                    ["تاریخ", "شماره سند", "منبع", "شرح", "حساب", "بدهکار", "بستانکار"],
+                    ledgerDetailRows.map((r) => [r.date, r.reference, r.source, r.description, r.account, r.debit, r.credit]),
+                  );
+                  downloadCsv(
+                    `audit-${exportScope}.csv`,
+                    ["زمان", "کاربر", "عملیات", "موجودیت", "شناسه", "علت"],
+                    auditExportRows.map((r) => [r.date, r.user, r.action, r.entity, r.entityId, r.reason]),
+                 );
+                  toast.success("سه فایل اکسل دانلود شد: اسناد، ردیف‌های دفتر کل و گزارش عملیات");
+                }}
+              >
+                <FileSpreadsheet className="size-4" />
+                اکسل (۳ فایل CSV)
+              </Button>
+              <Button
+                className="gap-1.5"
+                disabled={exportBusy || exportLedger === undefined || exportAudit === undefined}
+                onClick={() => {
+                  const sub = scopeSubtitle();
+                  printHtml(
+                    "دفتر کل — مجتمع تجاری اداری شهریار",
+                    sub,
+                    ["تاریخ", "شماره سند", "منبع", "شرح", "بدهکار", "بستانکار"],
+                    ledgerExportRows.map((r) => [r.date, r.reference, r.source, r.description, formatMoney(r.debit, unit), formatMoney(r.credit, unit)]),
+                  );
+                  printHtml(
+                    "ردیف‌های دفتر کل — مجتمع تجاری اداری شهریار",
+                    sub,
+                    ["تاریخ", "شماره سند", "منبع", "شرح", "حساب", "بدهکار", "بستانکار"],
+                    ledgerDetailRows.map((r) => [r.date, r.reference, r.source, r.description, r.account, formatMoney(r.debit, unit), formatMoney(r.credit, unit)]),
+                  );
+                  printHtml(
+                    "گزارش عملیات — مجتمع تجاری اداری شهریار",
+                    sub,
+                    ["زمان", "کاربر", "عملیات", "موجودیت", "شناسه", "علت"],
+                    auditExportRows.map((r) => [r.date, r.user, r.action, r.entity, r.entityId, r.reason]),
+                  );
+                }}
+              >
+                <Printer className="size-4" />
+                چاپ / PDF (۳ گزارش)
+              </Button>
+            </div>
+            <p className="text-[11px] leading-5 text-muted-foreground">
+              نکته: مرورگرها فقط اجازه باز کردن یک پنجره چاپ را در هر کلیک می‌دهند؛ برای PDF کامل، هر گزارش را جداگانه ذخیره کنید یا از خروجی اکسل استفاده کنید.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportOpen(false)}>بستن</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
