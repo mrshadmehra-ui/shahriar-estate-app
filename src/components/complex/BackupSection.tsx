@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { formatJalali } from "@/lib/jalali";
 import { toFa } from "@/lib/fa";
 import { useAuth } from "@/hooks/use-auth";
-import { normalizeRole, ROLES } from "@/lib/roles";
+import { canManageBackup, normalizeRole } from "@/lib/roles";
 import { ConfirmDialog, Panel, SectionHeader } from "./ui";
 
 const TABLE_LABELS: Array<[string, string]> = [
@@ -43,7 +43,7 @@ const TABLE_LABELS: Array<[string, string]> = [
 export function BackupSection() {
   const { user } = useAuth();
   const role = normalizeRole(user?.role ?? undefined);
-  const isSuperAdmin = role === ROLES.SUPER_ADMIN;
+  const isSuperAdmin = canManageBackup(role);
 
   const [enabled, setEnabled] = useState(false);
   const backup = useQuery(api.backup.exportBackup, enabled ? {} : "skip");

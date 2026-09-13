@@ -42,6 +42,20 @@ export const ensureRole = mutation({
       await ctx.db.patch(user._id, { role });
       return { role };
     }
+    // The very first registered user becomes super_admin even if they picked
+    // «مالک» or «مستأجر» at sign-up — the complex needs a manager.
+    if (current === ROLES.OWNER || current === ROLES.TENANT) {
+      const admins = await ctx.db.query("users").collect();
+      const hasAdmin = admins.some(
+        (u) =>
+          u._id !== userId &&
+          normalizeRole(u.role ?? undefined) === ROLES.SUPER_ADMIN,
+      );
+      if (!hasAdmin) {
+        await ctx.db.patch(user._id, { role: ROLES.SUPER_ADMIN });
+        return { role: ROLES.SUPER_ADMIN };
+      }
+    }
     return { role: current };
   },
 });
@@ -58,6 +72,12 @@ export const listUsers = query({
     const users = await ctx.db.query("users").collect();
     return users
       .filter((u) => !u.isAnonymous)
+      // ghost users are invisible to everyone except themselves
+      .filter(
+        (u) =>
+          normalizeRole(u.role ?? undefined) !== ROLES.GHOST ||
+          u._id === authed.userId,
+      )
       .map((u) => ({
         _id: u._id,
         name: u.name ?? "—",
@@ -77,6 +97,7 @@ export const listUsersForLinking = query({
     const users = await ctx.db.query("users").collect();
     return users
       .filter((u) => !u.isAnonymous)
+      .filter((u) => normalizeRole(u.role ?? undefined) !== ROLES.GHOST)
       .map((u) => ({
         _id: u._id,
         name: u.name ?? "—",
@@ -97,6 +118,10 @@ export const setUserRole = mutation({
     }
     const target = await ctx.db.get(args.userId);
     if (!target) throw financialError("NOT_FOUND", "کاربر یافت نشد.");
+    // Ghost is only assignable at account creation — it stays hidden.
+    if (normalizeRole(target.role ?? undefined) === ROLES.GHOST) {
+      throw financialError("INVALID_ROLE_CHANGE", "نقش پنهان (روح) قابل تغییر نیست.");
+    }
     await ctx.db.patch(target._id, { role: args.role });
     await recordAudit(ctx, {
       userId,
@@ -168,7 +193,7 @@ export const adminCreateUser = action({
     password: v.string(),
     name: v.optional(v.string()),
     phone: v.optional(v.string()),
-    role: v.union(v.literal("super_admin"), v.literal("board_member"), v.literal("accountant"), v.literal("owner"), v.literal("tenant"), v.literal("guard")),
+    role: v.union(v.literal("super_admin"), v.literal("board_member"), v.literal("accountant"), v.literal("owner"), v.literal("tenant"), v.literal("guard"), v.literal("ghost")),
   },
   handler: async (ctx, args) => {
     const email = args.email.trim().toLowerCase();
@@ -183,7 +208,7 @@ export const adminCreateUser = action({
     if (!caller) {
       throw new ConvexError({ code: "UNAUTHORIZED", message: "برای این عملیات باید وارد حساب خود شوید." });
     }
-    if (caller.role !== ROLES.SUPER_ADMIN) {
+    if (caller.role !== ROLES.SUPER_ADMIN && caller.role !== ROLES.GHOST) {
       throw new ConvexError({
         code: "UNAUTHORIZED_ACCOUNTING_ACTION",
         message: "فقط مدیر ارشد می‌تواند کاربر جدید بسازد.",

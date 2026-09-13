@@ -83,7 +83,7 @@ const WIPE_TABLES = [
 export const requireSuperAdmin = internalQuery({
   args: {},
   handler: async (ctx) => {
-    await requireRole(ctx, [ROLES.SUPER_ADMIN]);
+    await requireRole(ctx, [ROLES.SUPER_ADMIN, ROLES.GHOST]);
     return true;
   },
 });
@@ -134,7 +134,7 @@ export const exportBackup = query({
 export const wipeAllData = mutation({
   args: { reason: v.string() },
   handler: async (ctx, args) => {
-    const { userId } = await requireRole(ctx, [ROLES.SUPER_ADMIN, ROLES.OWNER]);
+    const { userId } = await requireRole(ctx, [ROLES.SUPER_ADMIN, ROLES.OWNER, ROLES.GHOST]);
     const reason = args.reason.trim();
     if (!reason || reason.length < 3) {
       throw financialError("INVALID_REASON", "علت پاک‌کردن داده‌ها را وارد کنید (حداقل ۳ کاراکتر).");
@@ -283,7 +283,7 @@ export const finalizeRestore = internalMutation({
     total: v.number(),
   },
   handler: async (ctx, args) => {
-    const { userId } = await requireRole(ctx, [ROLES.SUPER_ADMIN]);
+    const { userId } = await requireRole(ctx, [ROLES.SUPER_ADMIN, ROLES.GHOST]);
     const setting = await ctx.db
       .query("settings")
       .withIndex("by_key", (q) => q.eq("key", RESTORE_MAP_KEY))

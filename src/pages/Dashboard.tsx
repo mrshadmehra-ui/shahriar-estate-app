@@ -105,6 +105,8 @@ export default function Dashboard() {
 
   const nav = useMemo(() => {
     if (!role) return [];
+    // Ghost sees every section, but is never announced anywhere.
+    if (role === ROLES.GHOST) return NAV;
     return NAV.filter((n) => n.roles.includes(role));
   }, [role]);
 

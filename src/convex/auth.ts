@@ -8,18 +8,30 @@ import { emailOtp } from "./auth/emailOtp";
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
     Password({
-      // Store name/phone from sign-up params. Role is intentionally left
-      // unset here: ensureRole() assigns super_admin to the very first user
-      // and "owner" to everyone who self-registers afterwards. Manager-created
-      // users get their role set by the adminCreateUser action instead.
+      // Self-registration (signUp): the user picks «مالک» or «مستأجر» and MUST
+      // provide a phone number. Role is stored from the form; ensureRole() then
+      // promotes the very first registered user to super_admin. Manager-created
+      // users get their role via the adminCreateUser action instead.
       profile: (params) => {
-        const profile: { email: string; name?: string; phone?: string } = {
+        const profile: { email: string; name?: string; phone?: string; role?: string } = {
           email: params.email as string,
         };
         const name = params.name as string | undefined;
         const phone = params.phone as string | undefined;
+        const flow = params.flow as string | undefined;
         if (name) profile.name = name;
-        if (phone) profile.phone = phone;
+        if (flow === "signUp") {
+          const digits = (phone ?? "")
+            .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+            .replace(/[^0-9]/g, "");
+          if (digits.length < 10) {
+            throw new Error("شماره تلفن الزامی است و باید حداقل ۱۰ رقم باشد.");
+          }
+          profile.phone = digits;
+          profile.role = params.signupRole === "tenant" ? "tenant" : "owner";
+        } else if (phone) {
+          profile.phone = phone;
+        }
         return profile;
       },
     }),

@@ -69,6 +69,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [signupRole, setSignupRole] = useState<"owner" | "tenant">("owner");
 
   // otp flow
   const [step, setStep] = useState<"signIn" | { email: string }>("signIn");
@@ -85,9 +86,18 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
   const handlePasswordSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (mode === "signUp" && !name.trim()) {
-      setError("نام و نام خانوادگی را وارد کنید.");
-      return;
+    if (mode === "signUp") {
+      if (!name.trim()) {
+        setError("نام و نام خانوادگی را وارد کنید.");
+        return;
+      }
+      const digits = phone
+        .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+        .replace(/[^0-9]/g, "");
+      if (digits.length < 10) {
+        setError("شماره تلفن الزامی است و باید حداقل ۱۰ رقم باشد (مثلاً ۰۹۱۲۱۲۳۴۵۶۷).");
+        return;
+      }
     }
     setIsLoading(true);
     setError(null);
@@ -95,14 +105,14 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       if (mode === "signIn") {
         await signIn("password", { flow: "signIn", email, password });
       } else {
-        const params: Record<string, string> = {
+        await signIn("password", {
           flow: "signUp",
           email,
           password,
           name,
-        };
-        if (phone.trim()) params.phone = phone.trim();
-        await signIn("password", params);
+          phone,
+          signupRole,
+        });
       }
       // success → the effect above navigates
     } catch (e) {
@@ -187,8 +197,8 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 <>
                   {mode === "signUp" && (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] leading-5 text-emerald-800">
-                      ثبت‌نام برای مالکین مجتمع. اولین کاربر ثبت‌نام‌شده «مدیر ارشد» می‌شود؛
-                      حسابدار و سایر نقش‌ها فقط توسط مدیر ارشد ساخته می‌شوند.
+                      ثبت‌نام برای مالکین و مستأجرین مجتمع (شماره تلفن الزامی است).
+                      اولین کاربر ثبت‌نام‌شده «مدیر ارشد» می‌شود؛ حسابدار و سایر نقش‌ها فقط توسط مدیر ارشد ساخته می‌شوند.
                     </div>
                   )}
                   <form onSubmit={handlePasswordSubmit} className="space-y-3">
@@ -209,14 +219,49 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs font-bold">تلفن (اختیاری)</Label>
+                          <Label className="text-xs font-bold">
+                            نوع حساب
+                          </Label>
+                          <div className="flex items-center gap-1 rounded-full border border-border bg-muted/50 p-1">
+                            <button
+                              type="button"
+                              onClick={() => setSignupRole("owner")}
+                              className={cn(
+                                "flex-1 rounded-full px-3 py-1.5 text-xs font-bold transition",
+                                signupRole === "owner"
+                                  ? "bg-primary text-primary-foreground shadow-sm"
+                                  : "text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              مالک واحد
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSignupRole("tenant")}
+                              className={cn(
+                                "flex-1 rounded-full px-3 py-1.5 text-xs font-bold transition",
+                                signupRole === "tenant"
+                                  ? "bg-primary text-primary-foreground shadow-sm"
+                                  : "text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              مستأجر
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold">
+                            تلفن همراه <span className="text-destructive">*</span>
+                          </Label>
                           <Input
                             dir="ltr"
                             className="text-end"
                             value={phone}
                             onChange={(e) => setPhone(e.target.value)}
-                            placeholder="0912-…"
+                            placeholder="0912…"
                             disabled={isLoading}
+                            required
+                            inputMode="tel"
                           />
                         </div>
                       </>
@@ -266,6 +311,8 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                           ورود
                           <ArrowLeft className="size-4" />
                         </>
+                      ) : signupRole === "tenant" ? (
+                        "ساخت حساب مستأجر"
                       ) : (
                         "ساخت حساب مالک"
                       )}
@@ -276,7 +323,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       <>
                         حساب ندارید؟{" "}
                         <Button variant="link" className="h-auto p-0 text-xs font-bold" onClick={() => { setMode("signUp"); setError(null); }}>
-                          ثبت‌نام به‌عنوان مالک
+                          ثبت‌نام (مالک / مستأجر)
                         </Button>
                       </>
                     ) : (
