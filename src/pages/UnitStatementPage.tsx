@@ -7,24 +7,31 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatJalali, jalaliStrToMs } from "@/lib/jalali";
 import { formatMoney } from "@/lib/money";
 import { toFa } from "@/lib/fa";
 import { useMoneyPref } from "@/components/complex/money-context";
-import { Badge, LoadingRow } from "@/components/complex/ui";
+import { LoadingRow } from "@/components/complex/ui";
 import { INVOICE_STATUS_LABELS, JOURNAL_SOURCE_LABELS as SOURCE_LABELS } from "@/components/complex/labels";
 import { downloadCsv } from "@/lib/export";
 
+/** Persian text hidden from screen but kept in the print/PDF layout. */
+const PrintOnly = ({ children }: { children: React.ReactNode }) => (
+  <span className="sr-only print:sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>
+    {children}
+  </span>
+);
+
 /**
  * Standalone, print-optimized unit statement (RTL).
- * Opens in its own window/tab — no dialog scroll/clipping when printing.
+ *
+ * A4 portrait is the designed size: the sheet is exactly 210mm wide and the
+ * table never exceeds the paper width, so no row ever splits into two ghost
+ * rows and no horizontal scrollbar strip appears — on A4 and on any larger
+ * paper (A3/letter) the sheet stays centered at true physical size.
  *
  * - Date range: from/to Jalali inputs filter the گردش حساب server-side.
- * - Full-width layout (no artificial max-width) so print uses the whole
- *   printable area of whatever paper the user picks in the print dialog.
- * - The table container's horizontal-scroll clip is neutralized in print,
- *   so no scrollbar bar appears and nothing is cut off.
+ * - ?print=1 opens the print dialog automatically once data is ready.
  */
 export default function UnitStatementPage() {
   const { unitId } = useParams<{ unitId: string }>();
@@ -66,16 +73,23 @@ export default function UnitStatementPage() {
     return `${from} تا ${to}`;
   };
 
+  const onPrint = () => {
+    if (!data) return;
+    window.print();
+  };
+
   return (
-    <div dir="rtl" className="min-h-screen w-full bg-slate-100 print:bg-white">
+    <div dir="rtl" className="min-h-screen bg-slate-100 print:bg-white">
       <style>{`
-        /* No fixed paper size — the printer/paper choice in the print dialog decides.
-           Content reflows to any width and paginates across as many pages as needed. */
-        @page { margin: 12mm; }
+        /* A4 portrait is the design size. 190mm = 210mm paper − 2×10mm margin:
+           the sheet can never exceed the printable width, so rows never wrap
+           into a second line and no horizontal scrollbar strip is drawn. */
+        @page { size: A4 portrait; margin: 10mm; }
         @media print {
           .no-print { display: none !important; }
-          body { background: white !important; }
-          html, body { width: auto !important; }
+          html, body { background: white !important; width: auto !important; }
+          /* Neutralize the table scroll-container clip (shadcn wrapper):
+             overflow:auto in print clips the table and draws a bar under it. */
           [data-slot="table-container"] { overflow: visible !important; }
           thead { display: table-header-group; }
           tr, td, th { page-break-inside: avoid; break-inside: avoid; }
@@ -158,16 +172,16 @@ export default function UnitStatementPage() {
             <FileDown className="size-3.5" />
             Excel
           </Button>
-          <Button size="sm" className="gap-1.5 text-xs font-bold" onClick={() => window.print()}>
+          <Button size="sm" className="gap-1.5 text-xs font-bold" onClick={onPrint}>
             <Printer className="size-3.5" />
             چاپ / ذخیره PDF
           </Button>
         </div>
       </div>
 
-      {/* Full-width sheet — uses the entire printable area, whatever the paper. */}
-      <div className="w-full px-4 py-6 print:m-0 print:p-0">
-        <div className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-slate-200 print:rounded-none print:p-0 print:shadow-none print:ring-0 sm:p-10">
+      {/* A4 sheet — exactly one paper width; centered on screen, true-to-size in print. */}
+      <div className="mx-auto w-[190mm] max-w-full px-2 py-6 print:w-[190mm] print:max-w-none print:p-0 print:m-0">
+        <div className="rounded-2xl bg-white p-6 shadow-lg ring-1 ring-slate-200 print:rounded-none print:p-0 print:shadow-none print:ring-0">
           {data === undefined ? (
             <div className="py-16">
               <LoadingRow />
@@ -191,79 +205,82 @@ export default function UnitStatementPage() {
                 </p>
               </div>
 
-              {/* summary balances */}
+              {/* summary balances — compact on paper */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border border-slate-300 p-3 text-center">
                   <p className="text-[11px] text-slate-500">مانده بدهی</p>
                   <p className="mt-1 text-sm font-extrabold tabular-nums text-rose-700">
                     {formatMoney(data.balanceRial, unit)}
+                    <PrintOnly> تومان</PrintOnly>
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-300 p-3 text-center">
                   <p className="text-[11px] text-slate-500">بستانکاری (پیش‌پرداخت)</p>
                   <p className="mt-1 text-sm font-extrabold tabular-nums text-emerald-700">
                     {formatMoney(data.creditRial, unit)}
+                    <PrintOnly> تومان</PrintOnly>
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-300 p-3 text-center">
                   <p className="text-[11px] text-slate-500">مانده نهایی</p>
                   <p className="mt-1 text-sm font-extrabold tabular-nums text-slate-900">
                     {formatMoney(Math.max(data.netBalanceRial, 0), unit)}
+                    <PrintOnly> تومان</PrintOnly>
                   </p>
                 </div>
               </div>
 
-              {/* statement table */}
+              {/* statement table — designed for A4: no cell wraps to a second line */}
               <div className="w-full">
                 <p className="mb-2 text-sm font-extrabold text-slate-900">گردش حساب</p>
-                <Table className="print:whitespace-normal border border-slate-300">
-                  <TableHeader>
-                    <TableRow className="bg-slate-100 hover:bg-slate-100">
-                      <TableHead className="border border-slate-300 text-[11px] font-extrabold text-slate-700">تاریخ</TableHead>
-                      <TableHead className="border border-slate-300 text-[11px] font-extrabold text-slate-700">شرح</TableHead>
-                      <TableHead className="border border-slate-300 text-[11px] font-extrabold text-slate-700">نوع</TableHead>
-                      <TableHead className="border border-slate-300 text-end text-[11px] font-extrabold text-slate-700">بدهکار</TableHead>
-                      <TableHead className="border border-slate-300 text-end text-[11px] font-extrabold text-slate-700">بستانکار</TableHead>
-                      <TableHead className="border border-slate-300 text-end text-[11px] font-extrabold text-slate-700">مانده</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <table className="w-full table-fixed border-collapse text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-100">
+                      <th className="w-[13%] border border-slate-300 px-1 py-1.5 text-start font-extrabold text-slate-700">تاریخ</th>
+                      <th className="w-[33%] border border-slate-300 px-1 py-1.5 text-start font-extrabold text-slate-700">شرح</th>
+                      <th className="w-[11%] border border-slate-300 px-1 py-1.5 text-center font-extrabold text-slate-700">نوع</th>
+                      <th className="w-[15%] border border-slate-300 px-1 py-1.5 text-end font-extrabold text-slate-700">بدهکار</th>
+                      <th className="w-[15%] border border-slate-300 px-1 py-1.5 text-end font-extrabold text-slate-700">بستانکار</th>
+                      <th className="w-[13%] border border-slate-300 px-1 py-1.5 text-end font-extrabold text-slate-700">مانده</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {data.statement.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="border border-slate-300 py-8 text-center text-xs text-slate-500">
+                      <tr>
+                        <td colSpan={6} className="border border-slate-300 py-8 text-center text-slate-500">
                           تراکنشی در این بازه ثبت نشده است.
-                        </TableCell>
-                      </TableRow>
+                        </td>
+                      </tr>
                     )}
                     {data.statement.map((row) => (
-                      <TableRow key={row.entryId} className="hover:bg-slate-50">
-                        <TableCell className="whitespace-nowrap border border-slate-200 text-xs text-slate-600">
-                          {formatJalali(row.date)}
-                        </TableCell>
-                        <TableCell className="border border-slate-200 text-xs font-medium text-slate-800">
-                          {row.description}
-                          <span className="ms-1.5 text-[10px] text-slate-400">{row.reference}</span>
-                        </TableCell>
-                        <TableCell className="border border-slate-200">
-                          <Badge tone="bg-slate-100 text-slate-600">{SOURCE_LABELS[row.sourceType] ?? row.sourceType}</Badge>
-                        </TableCell>
-                        <TableCell className="border border-slate-200 text-end text-xs font-bold tabular-nums text-rose-700">
+                      <tr key={row.entryId} className="bg-white">
+                        <td className="border border-slate-200 px-1 py-1 text-slate-600">{formatJalali(row.date)}</td>
+                        <td className="border border-slate-200 px-1 py-1 font-medium text-slate-800">
+                          <span className="block truncate" title={`${row.description} ${row.reference}`}>
+                            {row.description}
+                            <span className="ms-1 text-[9px] font-normal text-slate-400">{row.reference}</span>
+                          </span>
+                        </td>
+                        <td className="border border-slate-200 px-1 py-1 text-center text-[9px] text-slate-600">
+                          {SOURCE_LABELS[row.sourceType] ?? row.sourceType}
+                        </td>
+                        <td className="border border-slate-200 px-1 py-1 text-end font-bold tabular-nums text-rose-700">
                           {row.debitRial > 0 ? formatMoney(row.debitRial, unit) : "—"}
-                        </TableCell>
-                        <TableCell className="border border-slate-200 text-end text-xs font-bold tabular-nums text-emerald-700">
+                        </td>
+                        <td className="border border-slate-200 px-1 py-1 text-end font-bold tabular-nums text-emerald-700">
                           {row.creditRial > 0 ? formatMoney(row.creditRial, unit) : "—"}
-                        </TableCell>
-                        <TableCell className="border border-slate-200 text-end text-xs font-extrabold tabular-nums text-slate-900">
+                        </td>
+                        <td className="border border-slate-200 px-1 py-1 text-end font-extrabold tabular-nums text-slate-900">
                           {formatMoney(Math.abs(row.balanceRial), unit)}
-                        </TableCell>
-                      </TableRow>
+                        </td>
+                      </tr>
                     ))}
-                  </TableBody>
-                </Table>
+                  </tbody>
+                </table>
               </div>
 
               {/* invoices — continue on the next sheet */}
-              <div className="w-full">
+              <div className="w-full print:break-before-page">
                 <p className="mb-2 text-sm font-extrabold text-slate-900">فاکتورهای واحد</p>
                 <div className="divide-y divide-slate-200 rounded-xl border border-slate-300">
                   {data.invoices.length === 0 && (
@@ -276,7 +293,9 @@ export default function UnitStatementPage() {
                         <p className="text-[10px] text-slate-500">سررسید {formatJalali(inv.dueDate)}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge tone="bg-slate-100 text-slate-600">{INVOICE_STATUS_LABELS[inv.status]}</Badge>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
+                          {INVOICE_STATUS_LABELS[inv.status]}
+                        </span>
                         <span className="text-xs font-extrabold tabular-nums text-slate-900">{formatMoney(inv.totalRial, unit)}</span>
                       </div>
                     </div>
@@ -285,7 +304,7 @@ export default function UnitStatementPage() {
               </div>
 
               {/* payments — continue on the next sheet */}
-              <div className="w-full">
+              <div className="w-full print:break-before-page">
                 <p className="mb-2 text-sm font-extrabold text-slate-900">پرداخت‌های واحد</p>
                 <div className="divide-y divide-slate-200 rounded-xl border border-slate-300">
                   {data.payments.length === 0 && (
@@ -306,7 +325,7 @@ export default function UnitStatementPage() {
               </div>
 
               <p className="text-center text-[10px] text-slate-400">
-                این صورت‌حساب در تاریخ {formatJalali(Date.now())} از سامانه مدیریت مجتمع شهریار استخراج شده است — مبالغ به واحد «{unit === "toman" ? "تومان" : "ریال"}».
+                این صورت‌حساب در تاریخ {formatJalali(Date.now())} از سامانه مدیریت مجتمع شهریار استخراج شده است — مبالغ به واحد «تومان».
               </p>
             </div>
           )}

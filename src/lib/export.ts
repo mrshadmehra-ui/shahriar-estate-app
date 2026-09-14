@@ -83,11 +83,13 @@ export function printSectionsHtml(mainTitle: string, subtitle: string, sections:
 <meta charset="utf-8" />
 <title>${mainTitle}</title>
 <style>
-  /* No fixed paper size — printer/paper choice in the print dialog decides;
-     the layout reflows to any width and paginates freely across pages. */
-  @page { margin: 12mm; }
+  /* A4 portrait is the design size: 190mm sheet = 210mm paper − 2×10mm margins.
+     The table can never exceed the printable width — no clipped columns, no
+     phantom rows from wrapped cells. On larger paper it stays true-to-size. */
+  @page { size: A4 portrait; margin: 10mm; }
+  html, body { width: auto !important; }
+  body { width: 190mm; margin: 0 auto; font-size: 11px; }
   * { box-sizing: border-box; }
-  body { font-family: Vazirmatn, Tahoma, "Segoe UI", sans-serif; color: #111; margin: 0; padding: 20px 24px; }
   h1 { font-size: 19px; margin: 0 0 4px; font-weight: 800; }
   h2 { font-size: 15px; margin: 0 0 10px; font-weight: 800; }
   .sub { font-size: 12px; color: #555; margin-bottom: 16px; line-height: 1.8; }
@@ -95,10 +97,11 @@ export function printSectionsHtml(mainTitle: string, subtitle: string, sections:
   .section.break { page-break-before: always; break-before: page; }
   thead { display: table-header-group; }
   tr, td, th { page-break-inside: avoid; break-inside: avoid; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th, td { border: 1px solid #bbb; padding: 6px 8px; text-align: right; vertical-align: top; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+  th, td { border: 1px solid #bbb; padding: 4px 6px; text-align: right; vertical-align: top;
+           overflow: hidden; text-overflow: ellipsis; word-break: keep-all; }
+  td.num, th.num { text-align: left; direction: ltr; overflow: visible; text-overflow: clip; }
   th { background: #f1f1f1; font-weight: 800; }
-  td.num { text-align: left; direction: ltr; }
   .footer { margin-top: 18px; font-size: 10px; color: #666; text-align: center; line-height: 1.8; }
   @media print { body { padding: 0; } }
 </style>
@@ -139,19 +142,24 @@ export function printHtml(
 <meta charset="utf-8" />
 <title>${title}</title>
 <style>
-  /* No fixed paper size — the printer/paper choice in the print dialog decides;
-     the layout reflows to any width and paginates freely across pages. */
-  @page { margin: 12mm; }
+  /* A4 portrait is the design size: 190mm sheet = 210mm paper − 2×10mm margins.
+     The table can never exceed the printable width — no clipped columns, no
+     phantom rows from wrapped cells. On larger paper it stays true-to-size. */
+  @page { size: A4 portrait; margin: 10mm; }
+  html, body { width: auto !important; }
+  body { width: 190mm; margin: 0 auto; font-size: 11px; }
   * { box-sizing: border-box; }
-  body { font-family: Vazirmatn, Tahoma, "Segoe UI", sans-serif; color: #111; margin: 0; padding: 20px 24px; }
   h1 { font-size: 17px; margin: 0 0 4px; font-weight: 800; }
   .sub { font-size: 12px; color: #555; margin-bottom: 16px; line-height: 1.8; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th, td { border: 1px solid #bbb; padding: 6px 8px; text-align: right; vertical-align: top; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+  th, td { border: 1px solid #bbb; padding: 4px 6px; text-align: right; vertical-align: top;
+           overflow: hidden; text-overflow: ellipsis; word-break: keep-all; }
+  td.num, th.num { text-align: left; direction: ltr; overflow: visible; text-overflow: clip; }
   th { background: #f1f1f1; font-weight: 800; }
-  td.num { text-align: left; direction: ltr; }
   .total td { background: #f6f6f6; font-weight: 800; }
   .footer { margin-top: 14px; font-size: 10px; color: #666; text-align: center; line-height: 1.8; }
+  thead { display: table-header-group; }
+  tr, td, th { page-break-inside: avoid; break-inside: avoid; }
   @media print { body { padding: 0; } }
 </style>
 </head>
